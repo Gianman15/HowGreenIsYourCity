@@ -184,14 +184,6 @@ eas build --profile development --platform android
 bun start --dev-client
 ```
 
-**Learn more:**
-
-- [Development Builds Introduction](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Creating Development Builds](https://docs.expo.dev/develop/development-builds/create-a-build/)
-- [Installing Development Builds](https://docs.expo.dev/develop/development-builds/installation/)
-
-## Advanced Features
-
 ### **Add a Database**
 
 Integrate with backend services:

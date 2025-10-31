@@ -51,9 +51,9 @@ export const CITIES: City[] = [
       // Other green spaces...
     ],
     geojsonFiles: {
-      census: 'http://localhost:8081/assets/data/montreal/bound_lct_000b21a_e.geojson',
-      greenspace: 'http://localhost:8081/assets/data/montreal/greenspace.geojson',
-      greenspacePerCapita: 'http://localhost:8081/assets/data/montreal/greenspace_per_capita.geojson',
+      census: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/assets/data/montreal/bound_lct_000b21a_e.geojson',
+      greenspace: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/assets/data/montreal/greenspace.geojson',
+      greenspacePerCapita: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/assets/data/montreal/greenspace_per_capita.geojson',
     },
   },
     {

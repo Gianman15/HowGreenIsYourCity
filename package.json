@@ -8,9 +8,10 @@
   "start-web-dev": "DEBUG=expo* npx rork start -p bkhx820zcibn4t3dhzdvu --web --tunnel",
   "lint": "expo lint",
   "web-build": "expo export --platform web",
-  "predeploy": "npm run web-build",
-  "deploy": "gh-pages -d dist"
+  "deploy": "gh-pages --nojekyll -d dist",
+  "predeploy": "expo export -p web"
   },
+  
   "homepage": "https://Gianman15.github.io/HowGreenIsYourCity/",
 
   "dependencies": {

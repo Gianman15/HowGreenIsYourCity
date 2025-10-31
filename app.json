@@ -25,7 +25,8 @@
       "package": "app.rork.city_green_space_map"
     },
     "web": {
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/favicon.png",
+      "output": "static"
     },
     "plugins": [
       [
@@ -38,7 +39,8 @@
       "expo-web-browser"
     ],
     "experiments": {
-      "typedRoutes": true
+      "typedRoutes": true,
+      "baseUrl": "/HowGreenIsYourCity"
     }
-  }
+  }  
 }

@@ -20,6 +20,14 @@ expo-env.d.ts
 # Metro
 .metro-health-check*
 
+#virtual environment
+.venvWebsite
+
+#launch.json folder
+.vscode/
+py_data_process/__pycache__/
+py_data_process/data/
+
 # debug
 npm-debug.*
 yarn-debug.*
@@ -36,3 +44,6 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 .vercel
+
+#data
+raw-data/

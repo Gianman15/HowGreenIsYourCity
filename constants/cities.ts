@@ -30,7 +30,7 @@ export type City = {
 
 export const CITIES: City[] = [
   {
-    id: 'montreal',
+    id: 'Montreal',
     name: 'Montreal',
     country: 'Canada',
     coordinates: {
@@ -51,36 +51,28 @@ export const CITIES: City[] = [
       // Other green spaces...
     ],
     geojsonFiles: {
-      census: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/assets/data/montreal/bound_lct_000b21a_e.geojson',
-      greenspace: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/assets/data/montreal/greenspace.geojson',
-      greenspacePerCapita: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/assets/data/montreal/greenspace_per_capita.geojson',
+      census: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/data/censustracts.geojson',
+      greenspace: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/data/montreal/greenspace_only.geojson',
+      greenspacePerCapita: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/data/montreal/greenspace_per_capita.geojson',
     },
   },
     {
-    id: 'copenhagen',
-    name: 'Copenhagen',
-    country: 'Denmark',
+    id: 'Ottowa',
+    name: 'Ottowa',
+    country: 'Canada',
     coordinates: {
-      latitude: 55.6761,
-      longitude: 12.5683,
+      latitude: 45.4247,
+      longitude: -75.6950,
     },
     totalArea: 179.8,
     greenSpacePercentage: 38.5,
     population: 644431,
     greenSpaces: [
-      {
-        id: 'kings-garden',
-        name: "King's Garden",
-        type: 'garden',
-        coordinates: { latitude: 55.6854, longitude: 12.5786 },
-        area: 0.12,
-      },
-      // Other green spaces...
     ],
     geojsonFiles: {
-      census: 'http://localhost:8081/assets/data/copenhagen/census.geojson',
-      greenspace: 'http://localhost:8081/assets/data/copenhagen/greenspace.geojson',
-      greenspacePerCapita: 'http://localhost:8081/assets/data/copenhagen/greenspace_per_capita.geojson',
+      census: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/assets/data/censustracts.geojson',
+      greenspace: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/assets/data/ottawa/greenspace.geojson',
+      greenspacePerCapita: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/assets/data/ottawa/greenspace_per_capita.geojson',
     },
   },
   {

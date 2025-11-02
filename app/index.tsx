@@ -36,7 +36,7 @@ export default function LandingScreen() {
 
           <Text style={styles.title}>Urban Green Spaces</Text>
           <Text style={styles.subtitle}>
-            Discover and compare green space coverage across cities worldwide
+            Discover and compare green space coverage across major cities in Canada!
           </Text>
         </View>
 
@@ -47,7 +47,7 @@ export default function LandingScreen() {
             </View>
             <Text style={styles.featureTitle}>City Comparison</Text>
             <Text style={styles.featureDescription}>
-              Compare green space coverage, protected areas, and per capita metrics across multiple cities
+              coming soon:Compare green space coverage and per capita metrics across multiple cities
             </Text>
           </View>
 
@@ -57,7 +57,7 @@ export default function LandingScreen() {
             </View>
             <Text style={styles.featureTitle}>Interactive Maps</Text>
             <Text style={styles.featureDescription}>
-              Explore detailed maps showing parks, forests, gardens, and nature reserves
+              Explore detailed maps showing parks, forests, gardens, and nature reserves seen from space
             </Text>
           </View>
 
@@ -67,7 +67,7 @@ export default function LandingScreen() {
             </View>
             <Text style={styles.featureTitle}>Environmental Data</Text>
             <Text style={styles.featureDescription}>
-              Access comprehensive statistics and insights about urban green spaces
+              coming soon:Access comprehensive statistics and insights about urban green spaces
             </Text>
           </View>
         </View>
@@ -77,19 +77,19 @@ export default function LandingScreen() {
           <View style={styles.statsList}>
             <View style={styles.statItem}>
               <View style={styles.statDot} />
-              <Text style={styles.statText}>Improve air quality and reduce urban heat</Text>
+              <Text style={styles.statText}>Improves air quality and reduces urban heat island effects</Text>
             </View>
             <View style={styles.statItem}>
               <View style={styles.statDot} />
-              <Text style={styles.statText}>Enhance mental and physical wellbeing</Text>
+              <Text style={styles.statText}>Enhances an individual's mental and physical wellbeing</Text>
             </View>
             <View style={styles.statItem}>
               <View style={styles.statDot} />
-              <Text style={styles.statText}>Support biodiversity and wildlife habitats</Text>
+              <Text style={styles.statText}>Supports biodiversity and local wildlife habitats</Text>
             </View>
             <View style={styles.statItem}>
               <View style={styles.statDot} />
-              <Text style={styles.statText}>Create community gathering spaces</Text>
+              <Text style={styles.statText}>Creates community gathering spaces</Text>
             </View>
           </View>
         </View>

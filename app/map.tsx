@@ -211,27 +211,32 @@ function LeafletMap({ city, activeLayers }: LeafletMapProps) {
 
  // Add/remove layers based on activeLayers state
   useEffect(() => {
-    if (!mapInstanceRef.current) return;
+  if (!mapInstanceRef.current) return;
 
-    const map = mapInstanceRef.current;
+  const map = mapInstanceRef.current;
 
-    // Check each layer and add/remove accordingly
-    Object.keys(layersRef.current).forEach((layerName) => {
-      const layer = layersRef.current[layerName];
-      
-      if (activeLayers.has(layerName)) {
-        // Add layer if it's active and not already on map
-        if (!map.hasLayer(layer)) {
-          layer.addTo(map);
-        }
-      } else {
-        // Remove layer if it's inactive and currently on map
-        if (map.hasLayer(layer)) {
-          map.removeLayer(layer);
-        }
+  // Check each layer and add/remove accordingly
+  Object.keys(layersRef.current).forEach((layerName) => {
+    const layer = layersRef.current[layerName];
+
+    if (activeLayers.has(layerName)) {
+      // Add layer if it's active and not already on the map
+      if (!map.hasLayer(layer)) {
+        layer.addTo(map);
       }
-    });
-  }, [activeLayers]);
+
+      // Ensure the Census Tract layer is always on top
+      if (layerName === 'census') {
+        layer.bringToFront();
+      }
+    } else {
+      // Remove layer if it's inactive and currently on the map
+      if (map.hasLayer(layer)) {
+        map.removeLayer(layer);
+      }
+    }
+  });
+}, [activeLayers]);
 
   if (Platform.OS !== 'web') return null;
 
@@ -247,7 +252,7 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const [selectedCity, setSelectedCity] = useState<City>(CITIES[0]);
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
-  const [activeLayers, setActiveLayers] = useState<Set<string>>(new Set(['greenspacePerCapita']));
+  const [activeLayers, setActiveLayers] = useState<Set<string>>(new Set(['census'])); 
   const [showLayerSelector, setShowLayerSelector] = useState<boolean>(true);
   const animatedHeight = useRef(new Animated.Value(COLLAPSED_HEIGHT)).current;
 

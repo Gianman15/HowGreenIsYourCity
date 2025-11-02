@@ -57,8 +57,8 @@ export const CITIES: City[] = [
     },
   },
     {
-    id: 'Ottowa',
-    name: 'Ottowa',
+    id: 'Ottawa',
+    name: 'Ottawa',
     country: 'Canada',
     coordinates: {
       latitude: 45.4247,

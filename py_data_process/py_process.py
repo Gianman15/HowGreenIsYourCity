@@ -109,6 +109,7 @@ def clip_geojson_to_bbox(input_file):
     maxy = float(input("Maximum latitude (maxy): "))
     try:
         greenspace_gdf = gpd.read_file(input_file)
+        greenspace_gdf = greenspace_gdf.to_crs(epsg=4326)
     except Exception as e:
         print(f"Error reading the file: {e}")
         return
@@ -124,6 +125,7 @@ def clip_geojson_to_bbox(input_file):
         print(f"Clipped GeoJSON saved to: {output_file}")
     except Exception as e:
         print(f"Error saving the clipped GeoJSON: {e}")
+clip_geojson_to_bbox("raw-data/montreal/output_simplified.geojson")
 def combine_greenspace_with_census(input_file):
     import geopandas as gpd
     import os
@@ -154,43 +156,41 @@ def combine_greenspace_with_census(input_file):
     except Exception as e:
         print(f"Error saving the combined GeoJSON: {e}")
         return
+combine_greenspace_with_census("raw-data/montreal/output_simplified_clipped.geojson")
 def process_greenspace_census_data(input_file, output_dir):
     import geopandas as gpd
     import pandas as pd
     import os
-    try:
-        greenspace_capita = gpd.read_file("raw-data/montreal/output_simplified_clipped_with_census.geojson")
-        greenspace_capita = greenspace_capita.to_crs(epsg=32188) # Ensure  CRS
-        greenspace_capita['greenspace_area'] = greenspace_capita.geometry.area
-        greenspace_capita['LANDAREA']= greenspace_capita['LANDAREA']*1e6
-        greenspace_capita['CTUID'] = greenspace_capita['CTUID'].astype(str)
-        greenspace_capita['pop21'] = pd.to_numeric(greenspace_capita['pop21'], errors='coerce')
-        greenspace_capita['LANDAREA'] = pd.to_numeric(greenspace_capita['LANDAREA'], errors='coerce')
-        greenspace_sum = greenspace_capita.groupby('CTUID').agg({
-            'greenspace_area': 'sum',
-            'pop21': 'first',
-            'LANDAREA': 'first',
-            'geometry': 'first'
-        }).reset_index()
-        greenspace_sum['greenspace_per_tract'] = greenspace_sum['greenspace_area'] / greenspace_sum['LANDAREA']
-        greenspace_sum['greenspace_per_capita'] = greenspace_sum['greenspace_area'] / greenspace_sum['pop21']
-        greenspace_sum = gpd.GeoDataFrame(greenspace_sum, geometry='geometry', crs='EPSG:32188')
-        greenspace_sum = greenspace_sum.to_crs(epsg=4326)
-        greenspace_sum.to_file("raw-data/montreal/greenspace_capita.geojson", driver="GeoJSON")
-        greenspace_final = gpd.read_file("raw-data/montreal/greenspace_capita.geojson")
-        greenspace_final = greenspace_final.drop(columns=['CTNAME', 'PRUID', 'CDUID', 'CDNAME', 'CSDUID', 'CSDNAME', 'CMAUID', 'CMANAME', 'CDTYPE', 'CSDTYPE', 'TYPE', 'pop21', 'LANDAREA'], errors='ignore')
-        greenspace_final_path = f"{output_dir}/greenspace_final.geojson"
-        greenspace_final.to_file(greenspace_final_path, driver="GeoJSON")
-        print(f"Final greenspace data saved to: {greenspace_final_path}")
-    except Exception as e:
-        print(f"An error occurred: {e}")
+    greenspace_capita = gpd.read_file(input_file)
+    greenspace_capita = greenspace_capita.to_crs(epsg=32188) # Ensure  CRS
+    input_dir = os.path.dirname(input_file)
+    greenspace_capita['greenspace_area'] = greenspace_capita.geometry.area
+    greenspace_capita['LANDAREA']= greenspace_capita['LANDAREA']*1e6
+    greenspace_capita['CTUID'] = greenspace_capita['CTUID'].astype(str)
+    greenspace_capita['pop21'] = pd.to_numeric(greenspace_capita['pop21'], errors='coerce')
+    greenspace_capita['LANDAREA'] = pd.to_numeric(greenspace_capita['LANDAREA'], errors='coerce')
+    greenspace_sum = greenspace_capita.groupby('CTUID').agg({
+        'greenspace_area': 'sum',
+        'pop21': 'first',
+        'LANDAREA': 'first',
+        'geometry': 'first'
+    }).reset_index()
+    greenspace_sum['greenspace_per_tract'] = greenspace_sum['greenspace_area'] / greenspace_sum['LANDAREA']
+    greenspace_sum['greenspace_per_capita'] = greenspace_sum['greenspace_area'] / greenspace_sum['pop21']
+    save_dir = os.path.join(input_dir, os.path.basename(input_file).replace("output_simplified_clipped_with_census.geojson", "greenspace_capita.geojson"))
+    greenspace_sum = gpd.GeoDataFrame(greenspace_sum, geometry='geometry', crs='EPSG:32188')
+    greenspace_sum = greenspace_sum.to_crs(epsg=4326)
+    greenspace_sum.to_file(save_dir, driver="GeoJSON")
+    print(f"Combined GeoJSON saved to: {save_dir}")
+process_greenspace_census_data("raw-data/montreal/output_simplified_clipped_with_census.geojson", output_dir="data/montreal")
 def process_greenspace_data(input_file, output_dir):
     import geopandas as gpd
     import pandas as pd
     import os
     import numpy as np
-    print(f"we are at processing greenspace data below")
     try:
+        input_dir = os.path.dirname(input_file)
+        save_dir = os.path.join(input_dir, os.path.basename(input_file))
         greenspace_capita = gpd.read_file(input_file)
         greenspace_capita = greenspace_capita.to_crs(epsg=32188)  # Ensure CRS is in meters for area calculations
         greenspace_capita['greenspace_area'] = greenspace_capita.geometry.area
@@ -209,15 +209,17 @@ def process_greenspace_data(input_file, output_dir):
         greenspace_sum.loc[greenspace_sum['greenspace_area'] == 0, 'greenspace_per_capita'] = 0.0
         no_pop_mask = greenspace_sum['pop21'].isna() | (greenspace_sum['pop21'] <= 0)
         greenspace_sum.loc[no_pop_mask, 'greenspace_per_capita'] = -1.0
+        save_dir = os.path.join(input_dir, os.path.basename(input_file))
         greenspace_sum = gpd.GeoDataFrame(greenspace_sum, geometry='geometry', crs='EPSG:32188')
         greenspace_sum = greenspace_sum.to_crs(epsg=4326)  # Convert back to WGS84 for GeoJSON
-        greenspace_capita_path = os.path.join(output_dir, "greenspace_capita.geojson")
-        greenspace_sum.to_file(greenspace_capita_path, driver="GeoJSON")
-        print(f"Greenspace capita data saved to: {greenspace_capita_path}")
+        greenspace_sum.to_file(save_dir, driver="GeoJSON")
+        print(f"Greenspace capita data saved to: {save_dir}")
+        greenspace_sum = greenspace_sum.to_crs(epsg=32188)  # Convert back to projected CRS for area calculations
         greenspace_final = greenspace_sum.drop(columns=[
             'CTNAME', 'PRUID', 'CDUID', 'CDNAME', 'CSDUID', 'CSDNAME',
             'CMAUID', 'CMANAME', 'CDTYPE', 'CSDTYPE', 'TYPE', 'pop21', 'LANDAREA'
         ], errors='ignore')  # Use `errors='ignore'` to avoid issues if columns are missing
+        greenspace_final_path = os.path.join(output_dir, "greenspace_final.geojson")
         census_gdf = gpd.read_file("data/censustracts.geojson")
         census_gdf = census_gdf.to_crs(epsg=4326)
         greenspace_sum = greenspace_sum.to_crs(epsg=4326)
@@ -227,8 +229,10 @@ def process_greenspace_data(input_file, output_dir):
             how='left'
         )
         GS_capita_gdf = gpd.GeoDataFrame(GS_capita_gdf, geometry='geometry', crs='EPSG:4326')
-        greenspace_final_path = os.path.join(output_dir, "greenspace_capita.geojson")
-        greenspace_final.to_file(greenspace_final_path, driver="GeoJSON")
+        greenspace_final_path = os.path.join(output_dir, "greenspace_per_capita.geojson")
+        GS_capita_gdf.to_file(greenspace_final_path, driver="GeoJSON")
+        print(f"CRS before saving: {GS_capita_gdf.crs}")
         print(f"Final greenspace data saved to: {greenspace_final_path}")
     except Exception as e:
         print(f"An error occurred: {e}")
+process_greenspace_data("raw-data/montreal/greenspace_capita.geojson", output_dir="data/montreal")

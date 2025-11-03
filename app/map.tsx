@@ -70,9 +70,14 @@ function LeafletMap({ city, activeLayers }: LeafletMapProps) {
     const initMap = async () => {
       const L = await import('leaflet');
 
+      // Clean up existing map instance and layers first
       if (mapInstanceRef.current) {
         mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
       }
+      
+      // Clear layer references
+      layersRef.current = {};
 
       if (!mapRef.current) return;
 
@@ -116,6 +121,11 @@ function LeafletMap({ city, activeLayers }: LeafletMapProps) {
           });
 
           layersRef.current.greenspace = greenspaceLayer;
+          
+          // Add to map immediately if it's in the default active layers
+          if (activeLayers.has('greenspace')) {
+            greenspaceLayer.addTo(map);
+          }
         } catch (error) {
           console.error(`Error loading greenspace GeoJSON data:`, error);
         }
@@ -149,6 +159,11 @@ function LeafletMap({ city, activeLayers }: LeafletMapProps) {
           });
 
           layersRef.current.census = censusLayer;
+          
+          // Add to map immediately if it's in the default active layers
+          if (activeLayers.has('census')) {
+            censusLayer.addTo(map);
+          }
         } catch (error) {
           console.error(`Error loading census GeoJSON data:`, error);
         }
@@ -192,6 +207,11 @@ function LeafletMap({ city, activeLayers }: LeafletMapProps) {
           });
 
           layersRef.current.greenspacePerCapita = greenspacePerCapitaLayer;
+          
+          // Add to map immediately if it's in the default active layers
+          if (activeLayers.has('greenspacePerCapita')) {
+            greenspacePerCapitaLayer.addTo(map);
+          }
         } catch (error) {
           console.error(`Error loading greenspace per capita GeoJSON data:`, error);
         }
@@ -202,9 +222,12 @@ function LeafletMap({ city, activeLayers }: LeafletMapProps) {
     initMap();
 
     return () => {
+      // Cleanup function
       if (mapInstanceRef.current) {
         mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
       }
+      layersRef.current = {};
     };
   }, [city]);
 
@@ -255,10 +278,6 @@ export default function HomeScreen() {
   const [activeLayers, setActiveLayers] = useState<Set<string>>(new Set(['census'])); 
   const [showLayerSelector, setShowLayerSelector] = useState<boolean>(true);
   const animatedHeight = useRef(new Animated.Value(COLLAPSED_HEIGHT)).current;
-
-  const largestGreenSpace = selectedCity.greenSpaces.reduce((prev, current) =>
-    prev.area > current.area ? prev : current
-  );
 
   const toggleSheet = () => {
     const toValue = isExpanded ? COLLAPSED_HEIGHT : EXPANDED_HEIGHT;
@@ -342,9 +361,6 @@ export default function HomeScreen() {
             <MapPin size={48} color="#2E7D32" />
             <Text style={styles.placeholderText}>
               Map view for {selectedCity.name}
-            </Text>
-            <Text style={styles.placeholderSubtext}>
-              {selectedCity.greenSpaces.length} green spaces
             </Text>
           </View>
         )}
@@ -446,26 +462,6 @@ export default function HomeScreen() {
               {selectedCity.greenSpacePercentage}%
             </Text>
             <Text style={styles.factLabel}>Green Space Coverage</Text>
-          </View>
-
-          <View style={styles.factCard}>
-            <View style={styles.factIconContainer}>
-              <Trees size={24} color="#2E7D32" />
-            </View>
-            <Text style={styles.factValue}>
-              {selectedCity.greenSpaces.length}
-            </Text>
-            <Text style={styles.factLabel}>Protected Areas</Text>
-          </View>
-
-          <View style={styles.factCard}>
-            <View style={styles.factIconContainer}>
-              <MapPin size={24} color="#2E7D32" />
-            </View>
-            <Text style={styles.factValue}>
-              {largestGreenSpace.area.toFixed(1)} km²
-            </Text>
-            <Text style={styles.factLabel}>Largest Area</Text>
           </View>
 
           <View style={styles.factCard}>

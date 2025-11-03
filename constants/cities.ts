@@ -1,14 +1,3 @@
-export type GreenSpace = {
-  id: string;
-  name: string;
-  type: 'park' | 'forest' | 'garden' | 'reserve';
-  coordinates: {
-    latitude: number;
-    longitude: number;
-  };
-  area: number;
-};
-
 export type City = {
   id: string;
   name: string;
@@ -17,7 +6,6 @@ export type City = {
     latitude: number;
     longitude: number;
   };
-  greenSpaces: GreenSpace[];
   totalArea: number;
   greenSpacePercentage: number;
   population: number;
@@ -40,18 +28,8 @@ export const CITIES: City[] = [
     totalArea: 728.6,
     greenSpacePercentage: 47.0,
     population: 5850000,
-    greenSpaces: [
-      {
-        id: 'gardens-bay',
-        name: 'Gardens by the Bay',
-        type: 'garden',
-        coordinates: { latitude: 1.2816, longitude: 103.8636 },
-        area: 1.01,
-      },
-      // Other green spaces...
-    ],
     geojsonFiles: {
-      census: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/data/censustracts.geojson',
+      census: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/data/montreal/censustracts.geojson',
       greenspace: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/data/montreal/greenspace_only.geojson',
       greenspacePerCapita: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/data/montreal/greenspace_per_capita.geojson',
     },
@@ -67,12 +45,10 @@ export const CITIES: City[] = [
     totalArea: 179.8,
     greenSpacePercentage: 38.5,
     population: 644431,
-    greenSpaces: [
-    ],
     geojsonFiles: {
-      census: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/assets/data/censustracts.geojson',
-      greenspace: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/assets/data/ottawa/greenspace.geojson',
-      greenspacePerCapita: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/assets/data/ottawa/greenspace_per_capita.geojson',
+      census: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/data/ottawa/censustracts.geojson',
+      greenspace: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/data/ottawa/greenspace_only.geojson',
+      greenspacePerCapita: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/data/ottawa/greenspace_per_capita.geojson',
     },
   },
   {
@@ -86,20 +62,10 @@ export const CITIES: City[] = [
     totalArea: 114.97,
     greenSpacePercentage: 42.3,
     population: 662248,
-    greenSpaces: [
-      {
-        id: 'stanley-park',
-        name: 'Stanley Park',
-        type: 'park',
-        coordinates: { latitude: 49.3044, longitude: -123.1443 },
-        area: 4.05,
-      },
-      // Other green spaces...
-    ],
     geojsonFiles: {
-      census: 'http://localhost:8081/assets/data/vancouver/census.geojson',
-      greenspace: 'http://localhost:8081/assets/data/vancouver/greenspace.geojson',
-      greenspacePerCapita: 'http://localhost:8081/assets/data/vancouver/greenspace_per_capita.geojson',
+      census: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/data/vancouver/censustracts.geojson',
+      greenspace: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/data/vancouver/greenspace_only.geojson',
+      greenspacePerCapita: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/data/vancouver/greenspace_per_capita.geojson',
     },
   },
 ]

@@ -193,12 +193,16 @@ const styles = StyleSheet.create({
     marginBottom: 40,
     alignItems: 'stretch',
     justifyContent: 'space-between',
+    flexWrap: 'wrap',
   },
   featuresColumn: {
-    width: '90%',
+    flex: 1,
+    minWidth: 200,
+    gap: 16,
   },
   exploreColumn: {
-    width: 120,
+    minWidth: 120,
+    maxWidth: 120,
     justifyContent: 'center',
     alignItems: 'center',
     gap: 16,
@@ -212,8 +216,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 12,
     elevation: 3,
-    width: '100%',
-    alignSelf: 'flex-start',
+    marginBottom: 16,
   },
   featureIconContainer: {
     width: 56,

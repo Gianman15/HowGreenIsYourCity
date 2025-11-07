@@ -9,3 +9,14 @@ i manually placed the landsat 8/9 data files (only really need b4 and b5 and don
 created a copy of the final data file containing the citied in the repo directory for the website because the app needs somewhere to fetch the data for display and i wanted things to stay organized
 
 be sure that the directory the py file is run in has access to an empty data folder in the same directory. also, it uses the raw data folder to store intermediate geojsons. the raw-data directory has to have a certain layout
+raw_data
+    census tracts
+        census_data
+            tract.shp
+        census_division
+            city_division.shp
+    city
+        landsat2_c2
+            _b4.tif
+            _b5.tif
+        census_tracts.csv_

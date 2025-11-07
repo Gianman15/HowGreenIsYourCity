@@ -4,15 +4,18 @@ def create_census_geojson(input_csv, input_shp, output_dir="data/"):
     import os
     canada_csv = input_csv
     shapefile_path = input_shp
-    df = pd.read_csv(canada_csv, encoding='latin1')
-    df = df.apply(pd.to_numeric, errors='coerce')
+    df = pd.read_csv(canada_csv, encoding='latin1', dtype={'CTUID': str})
+    if 'CTUID' in df.columns:
+        df['CTUID'] = df['CTUID'].astype(str).str.strip()
     print(df.head())
     df = df.drop(columns=['pop16', 'pop%delt', 'dwelltot', 'privd'])  
-    df = pd.read_csv(canada_csv, encoding='latin1')
-    df = df.drop(columns=['pop16', 'pop%delt', 'dwelltot', 'privd']) 
+    if 'a_land' in df.columns:
+        df = df.rename(columns={'a_land': 'LANDAREA'})
     print(df.head())
     gdf = gpd.read_file(shapefile_path)
     gdf = gdf.to_crs(epsg=4326) # Ensure both are in the same CRS
+    if 'CTUID' in gdf.columns:
+        gdf['CTUID'] = gdf['CTUID'].astype(str).str.strip()
     merged = gdf.merge(df, left_on='CTUID', right_on='CTUID')
     os.makedirs(output_dir, exist_ok=True)
     geojson_path = os.path.join(output_dir, "censustracts.geojson")
@@ -106,45 +109,27 @@ def mask_to_geojson(mask_tiff):
         gdf.to_file(output_geojson, driver="GeoJSON")
         print(f"GeoJSON saved to: {output_geojson}")
         return output_geojson
-def clip_geojson_to_bbox(input_file, output_dir, bbox_coords=None):
-    import geopandas as gpd
-    from shapely.geometry import box
+def clip_geojson_to_CD(input_file, output_dir, census_div_shapefile, cduid=None):
     import os
-    input_file = os.path.abspath(input_file)
-    input_dir = os.path.dirname(input_file)
-    if bbox_coords is None:
-        print("Enter the bounding box coordinates:")
-        minx = float(input("Minimum longitude (minx): "))
-        miny = float(input("Minimum latitude (miny): "))
-        maxx = float(input("Maximum longitude (maxx): "))
-        maxy = float(input("Maximum latitude (maxy): "))
-    else:
-        minx, miny, maxx, maxy = bbox_coords
-        print(f"Using bounding box: ({minx}, {miny}, {maxx}, {maxy})")
-    try:
-        greenspace_gdf = gpd.read_file(input_file)
-        greenspace_gdf = greenspace_gdf.to_crs(epsg=4326)
-    except Exception as e:
-        print(f"Error reading the file: {e}")
-        return
-    bbox = box(minx, miny, maxx, maxy)
-    try:
-        clipped_gdf = greenspace_gdf.clip(bbox)
-    except Exception as e:
-        print(f"Error clipping the GeoJSON: {e}")
-        return
-    try:
-        os.makedirs(output_dir, exist_ok=True)
-        output_file = os.path.join(output_dir, "greenspace_only.geojson")
-        clipped_gdf.to_file(output_file, driver="GeoJSON")
-        print(f"Clipped GeoJSON saved to output directory: {output_file}")
-        input_output_file = os.path.join(input_dir, "greenspace_only.geojson")
-        clipped_gdf.to_file(input_output_file, driver="GeoJSON")
-        print(f"Clipped GeoJSON also saved to input directory: {input_output_file}")
-    except Exception as e:
-        print(f"Error saving the clipped GeoJSON: {e}")
+    import geopandas as gpd
+    if cduid is None:
+        raise ValueError("cduid must be provided")
+    census_div_gdf = gpd.read_file(census_div_shapefile)
+    census_div_gdf = census_div_gdf.to_crs(epsg=4326)
+    cd_geometry = census_div_gdf[census_div_gdf["CDUID"] == cduid]
+    if cd_geometry.empty:
+        raise ValueError(f"No census division found with CDUID: {cduid}")
+    gdf = gpd.read_file(input_file)
+    gdf = gdf.to_crs(epsg=4326)
+    clipped_gdf = gpd.clip(gdf, cd_geometry)
+    os.makedirs(output_dir, exist_ok=True)
+    output_file = os.path.join(output_dir, f"greenspace_{cduid}.geojson")
+    clipped_gdf.to_file(output_file, driver="GeoJSON")
+    print(f"Clipped GeoJSON saved to: {output_file}")
+    return output_file
 def combine_greenspace_with_census(input_file, output_dir, census_dir=None):
     import geopandas as gpd
+    import pandas as pd
     import os
     input_file = os.path.abspath(input_file)
     output_dir = os.path.abspath(output_dir)
@@ -162,16 +147,35 @@ def combine_greenspace_with_census(input_file, output_dir, census_dir=None):
         else:
             census_path = os.path.join(census_dir, "censustracts.geojson")
         census_gdf = gpd.read_file(census_path)
+        if 'LANDAREA_y' in census_gdf.columns:
+            census_gdf['LANDAREA'] = pd.to_numeric(census_gdf['LANDAREA_y'], errors='coerce') * 1e6
+        elif 'LANDAREA_x' in census_gdf.columns:
+            census_gdf['LANDAREA'] = pd.to_numeric(census_gdf['LANDAREA_x'], errors='coerce') * 1e6
+        elif 'LANDAREA' in census_gdf.columns:
+            census_gdf['LANDAREA'] = pd.to_numeric(census_gdf['LANDAREA'], errors='coerce')
+            if census_gdf['LANDAREA'].median() < 1000:  # Heuristic: if median < 1000, it's in km²
+                census_gdf['LANDAREA'] = census_gdf['LANDAREA'] * 1e6
         print(f"Census GeoJSON loaded from: {census_path}")
     except Exception as e:
         print(f"Error reading the censustracts file from {census_path}: {e}")
         return None
     clipped_gdf = clipped_gdf.to_crs(epsg=4326)
     census_gdf = census_gdf.to_crs(epsg=4326)
+    print(f"Number of greenspace polygons before join: {len(clipped_gdf)}")
+    total_greenspace_area_before = clipped_gdf.to_crs(epsg=32188).geometry.area.sum()
+    print(f"Total greenspace area before join: {total_greenspace_area_before:,.2f} m²")
     try:
-        joined = gpd.sjoin(clipped_gdf, census_gdf, how="left", predicate="intersects")
+        print("Performing overlay intersection (this may take a moment)...")
+        joined = gpd.overlay(clipped_gdf, census_gdf, how='intersection')
+        print(f"Number of greenspace polygons after overlay: {len(joined)}")
+        print(f"Number of polygons without CTUID match: {joined['CTUID'].isna().sum()}")
+        total_greenspace_area_after = joined.to_crs(epsg=32188).geometry.area.sum()
+        print(f"Total greenspace area after overlay: {total_greenspace_area_after:,.2f} m²")
+        area_diff = abs(total_greenspace_area_before - total_greenspace_area_after)
+        if area_diff > 100:  # Allow 100 m² tolerance for rounding
+            print(f"⚠️ WARNING: Area changed by {area_diff:,.2f} m² during overlay!")
     except Exception as e:
-        print(f"Error performing spatial join: {e}")
+        print(f"Error performing overlay: {e}")
         return None
     os.makedirs(output_dir, exist_ok=True)
     combined_file = os.path.join(output_dir, "greenspace_with_census.geojson")
@@ -190,23 +194,61 @@ def process_greenspace_census_data(input_file, output_dir):
     greenspace_capita = greenspace_capita.to_crs(epsg=32188) # Ensure  CRS
     input_dir = os.path.dirname(input_file)
     greenspace_capita['greenspace_area'] = greenspace_capita.geometry.area
-    greenspace_capita['LANDAREA']= greenspace_capita['LANDAREA']*1e6
+    print(f"Total rows in greenspace_with_census: {len(greenspace_capita)}")
+    print(f"Unique census tracts (CTUID): {greenspace_capita['CTUID'].nunique()}")
+    print(f"Rows with null CTUID: {greenspace_capita['CTUID'].isna().sum()}")
+    total_area_before_groupby = greenspace_capita['greenspace_area'].sum()
+    print(f"Total greenspace area before groupby: {total_area_before_groupby:,.2f} m²")
+    if 'LANDAREA_y' in greenspace_capita.columns:
+        greenspace_capita['LANDAREA'] = pd.to_numeric(greenspace_capita['LANDAREA_y'], errors='coerce') * 1e6
+    elif 'LANDAREA_x' in greenspace_capita.columns:
+        greenspace_capita['LANDAREA'] = pd.to_numeric(greenspace_capita['LANDAREA_x'], errors='coerce') * 1e6
+    elif 'LANDAREA' in greenspace_capita.columns:
+        greenspace_capita['LANDAREA'] = pd.to_numeric(greenspace_capita['LANDAREA'], errors='coerce')
+        if greenspace_capita['LANDAREA'].median() < 1000:  # Heuristic: if median < 1000, it's in km²
+            greenspace_capita['LANDAREA'] = greenspace_capita['LANDAREA'] * 1e6
+    else:
+        print("Warning: LANDAREA column not found. Available columns:", greenspace_capita.columns.tolist())
+        raise KeyError("LANDAREA column not found in the greenspace_with_census file. Check that the census data was properly merged.")
     greenspace_capita['CTUID'] = greenspace_capita['CTUID'].astype(str)
     greenspace_capita['pop21'] = pd.to_numeric(greenspace_capita['pop21'], errors='coerce')
     greenspace_capita['LANDAREA'] = pd.to_numeric(greenspace_capita['LANDAREA'], errors='coerce')
     greenspace_sum = greenspace_capita.groupby('CTUID').agg({
         'greenspace_area': 'sum',
         'pop21': 'first',
-        'LANDAREA': 'first',
-        'geometry': 'first'
+        'LANDAREA': 'first'
     }).reset_index()
+    total_area_after_groupby = greenspace_sum['greenspace_area'].sum()
+    print(f"Total greenspace area after groupby: {total_area_after_groupby:,.2f} m²")
+    print(f"Number of census tracts with greenspace: {len(greenspace_sum)}")
+    if abs(total_area_before_groupby - total_area_after_groupby) > 1:
+        print(f"⚠️ WARNING: Area mismatch! Lost {total_area_before_groupby - total_area_after_groupby:,.2f} m² during groupby")
     greenspace_sum['greenspace_per_tract'] = greenspace_sum['greenspace_area'] / greenspace_sum['LANDAREA']
     greenspace_sum['greenspace_per_capita'] = greenspace_sum['greenspace_area'] / greenspace_sum['pop21']
+    print("\n📊 Sample greenspace_area values BEFORE geometry merge:")
+    print(greenspace_sum[['CTUID', 'greenspace_area', 'LANDAREA']].head(10))
+    base_dir = os.path.dirname(os.path.dirname(input_dir))
+    city_name = os.path.basename(input_dir)
+    census_path = os.path.join(base_dir, "data", city_name, "censustracts.geojson")
+    if os.path.exists(census_path):
+        census_gdf = gpd.read_file(census_path)
+        census_gdf['CTUID'] = census_gdf['CTUID'].astype(str)
+        census_gdf = census_gdf.to_crs(epsg=32188)
+        greenspace_sum = census_gdf[['CTUID', 'geometry']].merge(
+            greenspace_sum, on='CTUID', how='right'
+        )
+        greenspace_sum = gpd.GeoDataFrame(greenspace_sum, geometry='geometry', crs='EPSG:32188')
+        print("\n📊 Sample greenspace_area values AFTER geometry merge:")
+        print(greenspace_sum[['CTUID', 'greenspace_area', 'LANDAREA']].head(10))
+    else:
+        print(f"Warning: Census file not found at {census_path}. Using first greenspace geometry per tract.")
+        greenspace_with_geom = greenspace_capita.groupby('CTUID')['geometry'].first().reset_index()
+        greenspace_sum = greenspace_sum.merge(greenspace_with_geom, on='CTUID')
+        greenspace_sum = gpd.GeoDataFrame(greenspace_sum, geometry='geometry', crs='EPSG:32188')
     save_dir = os.path.join(input_dir, os.path.basename(input_file).replace("greenspace_with_census.geojson", "greenspace_capita.geojson"))
-    greenspace_sum = gpd.GeoDataFrame(greenspace_sum, geometry='geometry', crs='EPSG:32188')
     greenspace_sum = greenspace_sum.to_crs(epsg=4326)
     greenspace_sum.to_file(save_dir, driver="GeoJSON")
-    print(f"Combined GeoJSON saved to: {save_dir}")
+    print(f"Greenspace capita data saved to: {save_dir}")
 def process_greenspace_data(input_file, output_dir):
     import geopandas as gpd
     import pandas as pd
@@ -217,17 +259,24 @@ def process_greenspace_data(input_file, output_dir):
         save_dir = os.path.join(input_dir, os.path.basename(input_file))
         greenspace_capita = gpd.read_file(input_file)
         greenspace_capita = greenspace_capita.to_crs(epsg=32188)  # Ensure CRS is in meters for area calculations
-        greenspace_capita['greenspace_area'] = greenspace_capita.geometry.area
-        greenspace_capita['LANDAREA'] = greenspace_capita['LANDAREA'] * 1e6  # Convert LANDAREA to square meters
+        if 'greenspace_area' not in greenspace_capita.columns:
+            raise KeyError("greenspace_area column not found in capita file. The file may be corrupted.")
+        print(f"📊 Loaded capita file with {len(greenspace_capita)} census tracts")
+        print(f"Total greenspace area in capita file: {greenspace_capita['greenspace_area'].sum():,.2f} m²")
+        if 'LANDAREA_y' in greenspace_capita.columns:
+            greenspace_capita['LANDAREA'] = pd.to_numeric(greenspace_capita['LANDAREA_y'], errors='coerce') * 1e6
+        elif 'LANDAREA_x' in greenspace_capita.columns:
+            greenspace_capita['LANDAREA'] = pd.to_numeric(greenspace_capita['LANDAREA_x'], errors='coerce') * 1e6
+        elif 'LANDAREA' in greenspace_capita.columns:
+            greenspace_capita['LANDAREA'] = pd.to_numeric(greenspace_capita['LANDAREA'], errors='coerce')
+            if greenspace_capita['LANDAREA'].median() < 1000:  # Heuristic: if median < 1000, it's in km²
+                greenspace_capita['LANDAREA'] = greenspace_capita['LANDAREA'] * 1e6
+        else:
+            print("Warning: No LANDAREA column found. Available columns:", greenspace_capita.columns.tolist())
+            raise KeyError("LANDAREA column not found")
         greenspace_capita['CTUID'] = greenspace_capita['CTUID'].astype(str)
         greenspace_capita['pop21'] = pd.to_numeric(greenspace_capita['pop21'], errors='coerce')
-        greenspace_capita['LANDAREA'] = pd.to_numeric(greenspace_capita['LANDAREA'], errors='coerce')
-        greenspace_sum = greenspace_capita.groupby('CTUID').agg({
-            'greenspace_area': 'sum',
-            'pop21': 'first',
-            'LANDAREA': 'first',
-            'geometry': 'first'
-        }).reset_index()
+        greenspace_sum = greenspace_capita.copy()
         greenspace_sum['greenspace_per_capita'] = greenspace_sum['greenspace_area'] / greenspace_sum['pop21']
         greenspace_sum['greenspace_per_capita'] = greenspace_sum['greenspace_area'] / greenspace_sum['pop21']
         greenspace_sum.loc[greenspace_sum['greenspace_area'] == 0, 'greenspace_per_capita'] = 0.0
@@ -260,47 +309,25 @@ def process_greenspace_data(input_file, output_dir):
         print(f"Final greenspace data saved to: {greenspace_final_path}")
     except Exception as e:
         print(f"An error occurred: {e}")
-def process_city_pipeline(city_name, base_dir):
-    import os
-    city_dir = os.path.join(base_dir, "raw-data", city_name)
-    output_dir = os.path.join(base_dir, "data", city_name)
-    os.makedirs(output_dir, exist_ok=True)
-    red_band = os.path.join(city_dir, "landsat2_c2", "LC08_L2SP_014028_20240701_20240711_02_T1_SR_B4.TIF")
-    nir_band = os.path.join(city_dir, "landsat2_c2", "LC08_L2SP_014028_20240701_20240711_02_T1_SR_B5.TIF")
-    ndvi_tiff = os.path.join(city_dir, "landsat2_c2", f"ndvi_{city_name}.tiff")
-    mask_tiff = os.path.join(city_dir, "landsat2_c2", f"ndvi_{city_name}_mask.tiff")
-    geojson_mask = os.path.join(city_dir, f"greenspace_ndvi_{city_name}.geojson")
-    clipped_geojson = os.path.join(output_dir, "greenspace_only.geojson")
-    combined_geojson = os.path.join(city_dir, "greenspace_with_census.geojson")
-    capita_geojson = os.path.join(output_dir, "greenspace_capita.geojson")
-    print(f"Processing city: {city_name}")
-    scale_tiff(red_band)
-    scale_tiff(nir_band)
-    calculate_ndvi(red_band, nir_band, city=f"{city_name}.tiff")
-    otsu_ndvi_threshold(ndvi_tiff)
-    mask_to_geojson(mask_tiff)
-    clip_geojson_to_bbox(geojson_mask, output_dir)
-    combine_greenspace_with_census(clipped_geojson, output_dir)
-    process_greenspace_census_data(combined_geojson, output_dir)
-    process_greenspace_data(capita_geojson, output_dir)
-    print(f"Pipeline completed for city: {city_name}")
-def clip_final_geojson_files(bbox_coords, base_dir, city_name):
+def clip_final_geojson_files(census_div_shapefile, cduid, base_dir, city_name):
     import geopandas as gpd
-    from shapely.geometry import box
     import os
     os.environ['OGR_GEOJSON_MAX_OBJ_SIZE'] = '0'
-    minx, miny, maxx, maxy = bbox_coords
-    bbox = box(minx, miny, maxx, maxy)
+    census_div_gdf = gpd.read_file(census_div_shapefile)
+    census_div_gdf = census_div_gdf.to_crs(epsg=4326)
+    cd_geometry = census_div_gdf[census_div_gdf["CDUID"] == cduid]
+    if cd_geometry.empty:
+        raise ValueError(f"No census division found with CDUID: {cduid}")
     output_dir = os.path.join(base_dir, "data", city_name)
     os.makedirs(output_dir, exist_ok=True)
     greenspace_per_capita_file = os.path.join(output_dir, "greenspace_per_capita.geojson")
     censustracts_file = os.path.join(output_dir, "censustracts.geojson")
-    print(f"Clipping files to bounding box: ({minx}, {miny}, {maxx}, {maxy})")
+    print(f"Clipping files to census division: {cduid}")
     if os.path.exists(greenspace_per_capita_file):
         try:
             gdf = gpd.read_file(greenspace_per_capita_file)
             gdf = gdf.to_crs(epsg=4326)
-            clipped_gdf = gdf.clip(bbox)
+            clipped_gdf = gpd.clip(gdf, cd_geometry)
             clipped_gdf.to_file(greenspace_per_capita_file, driver="GeoJSON")
             print(f"✓ Clipped greenspace_per_capita.geojson saved to: {greenspace_per_capita_file}")
         except Exception as e:
@@ -311,7 +338,7 @@ def clip_final_geojson_files(bbox_coords, base_dir, city_name):
         try:
             gdf = gpd.read_file(censustracts_file)
             gdf = gdf.to_crs(epsg=4326)
-            clipped_gdf = gdf.clip(bbox)
+            clipped_gdf = gpd.clip(gdf, cd_geometry)
             clipped_gdf.to_file(censustracts_file, driver="GeoJSON")
             print(f"✓ Clipped censustracts.geojson saved to: {censustracts_file}")
         except Exception as e:
@@ -319,7 +346,7 @@ def clip_final_geojson_files(bbox_coords, base_dir, city_name):
     else:
         print(f"⚠ censustracts.geojson not found at: {censustracts_file}")
     print("Clipping completed!")
-def process_city_pipeline(city_name, base_dir, census, census_boundaries, bbox_coords):
+def process_city_pipeline(city_name, base_dir, census, census_boundaries, census_div_shapefile, cduid):
     import os
     import glob
     os.environ['OGR_GEOJSON_MAX_OBJ_SIZE'] = '0'
@@ -338,7 +365,7 @@ def process_city_pipeline(city_name, base_dir, census, census_boundaries, bbox_c
     ndvi_tiff = os.path.join(city_dir, "landsat2_c2", f"ndvi_{city_name}.tiff")
     mask_tiff = os.path.join(city_dir, "landsat2_c2", f"ndvi_{city_name}_mask.tiff")
     geojson_mask = os.path.join(city_dir, f"greenspace_ndvi_{city_name}.geojson")
-    clipped_geojson = os.path.join(city_dir, "greenspace_only.geojson")
+    clipped_geojson = os.path.join(output_dir, f"greenspace_{cduid}.geojson")
     combined_geojson = os.path.join(city_dir, "greenspace_with_census.geojson")
     capita_geojson = os.path.join(city_dir, "greenspace_capita.geojson")
     print(f"Processing city: {city_name}")
@@ -347,9 +374,9 @@ def process_city_pipeline(city_name, base_dir, census, census_boundaries, bbox_c
     calculate_ndvi(red_band, nir_band, city=f"{city_name}.tiff")
     otsu_ndvi_threshold(ndvi_tiff)
     mask_to_geojson(mask_tiff)
-    clip_geojson_to_bbox(geojson_mask, output_dir, bbox_coords=bbox_coords)
+    clip_geojson_to_CD(geojson_mask, output_dir, census_div_shapefile, cduid=cduid)
     combine_greenspace_with_census(clipped_geojson, city_dir)
     process_greenspace_census_data(combined_geojson, output_dir)
     process_greenspace_data(capita_geojson, output_dir)
-    clip_final_geojson_files(bbox_coords, base_dir, city_name)
+    clip_final_geojson_files(census_div_shapefile, cduid, base_dir, city_name)
     print(f"Pipeline completed for city: {city_name}")

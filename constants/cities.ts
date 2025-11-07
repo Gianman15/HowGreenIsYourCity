@@ -30,7 +30,7 @@ export const CITIES: City[] = [
     population: 5850000,
     geojsonFiles: {
       census: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/data/montreal/censustracts.geojson',
-      greenspace: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/data/montreal/greenspace_only.geojson',
+      greenspace: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/data/montreal/greenspace_clipped_2466.geojson',
       greenspacePerCapita: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/data/montreal/greenspace_per_capita.geojson',
     },
   },
@@ -47,8 +47,25 @@ export const CITIES: City[] = [
     population: 644431,
     geojsonFiles: {
       census: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/data/ottawa/censustracts.geojson',
-      greenspace: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/data/ottawa/greenspace_only.geojson',
+      greenspace: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/data/ottawa/greenspace_clipped_3506.geojson',
       greenspacePerCapita: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/data/ottawa/greenspace_per_capita.geojson',
+    },
+  },
+  {
+    id: 'toronto',
+    name: 'Toronto',
+    country: 'Canada',
+    coordinates: {
+      latitude: 43.6532,
+      longitude: -79.3832,
+    },
+    totalArea: 630.2,
+    greenSpacePercentage: 35.0,
+    population: 2930000,
+    geojsonFiles: {
+      census: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/data/toronto/censustracts.geojson',
+      greenspace: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/data/toronto/greenspace_clipped_3520.geojson',
+      greenspacePerCapita: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/data/toronto/greenspace_per_capita.geojson',
     },
   },
   {
@@ -64,7 +81,7 @@ export const CITIES: City[] = [
     population: 662248,
     geojsonFiles: {
       census: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/data/vancouver/censustracts.geojson',
-      greenspace: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/data/vancouver/greenspace_only.geojson',
+      greenspace: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/data/vancouver/greenspace_clipped_5915.geojson',
       greenspacePerCapita: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/data/vancouver/greenspace_per_capita.geojson',
     },
   },

@@ -30,6 +30,7 @@ type LeafletMapProps = {
   greenSpaceColors: Record<string, string>;
   activeLayers: Set<string>;
   onBreaksCalculated?: (breaks: number[]) => void;
+  colorblindMode?: boolean;
 };
 
 //-----------------------------
@@ -49,19 +50,32 @@ function getBreaks(features: any[], property: string, nClasses: number = 7): num
 }
 
 // Helper function to get color based on value and breaks (matching webapp.js)
-function getColor(value: number | null | undefined, breaks: number[]): string {
-  if (value == null || isNaN(value)) return '#660000ff'; // no greenspace
+function getColor(value: number | null | undefined, breaks: number[], colorblindMode: boolean = false): string {
+  if (value == null || isNaN(value)) return colorblindMode ? '#440154' : '#660000ff'; // no greenspace
   if (value === -1) return '#999999'; // no residents
-  if (value <= breaks[0]) return '#bf0000'; // very low
-  if (value <= breaks[1]) return '#e36c0a';
-  if (value <= breaks[2]) return '#f7c948';
-  if (value <= breaks[3]) return '#b7e28a';
-  if (value <= breaks[4]) return '#5ec962';
-  if (value <= breaks[5]) return '#21918c';
-  return '#2d6a4f'; // highest
+  
+  if (colorblindMode) {
+    // Viridis color scheme (yellow-green-blue) - colorblind friendly
+    if (value <= breaks[0]) return '#440154'; // dark purple/blue (lowest)
+    if (value <= breaks[1]) return '#31688e';
+    if (value <= breaks[2]) return '#35b779';
+    if (value <= breaks[3]) return '#6ece58';
+    if (value <= breaks[4]) return '#b5de2b';
+    if (value <= breaks[5]) return '#fde724';
+    return '#ffff00'; // bright yellow (highest)
+  } else {
+    // Original color scheme
+    if (value <= breaks[0]) return '#bf0000'; // very low
+    if (value <= breaks[1]) return '#e36c0a';
+    if (value <= breaks[2]) return '#f7c948';
+    if (value <= breaks[3]) return '#b7e28a';
+    if (value <= breaks[4]) return '#5ec962';
+    if (value <= breaks[5]) return '#21918c';
+    return '#2d6a4f'; // highest
+  }
 }
 
-function LeafletMap({ city, activeLayers, onBreaksCalculated }: LeafletMapProps) {
+function LeafletMap({ city, activeLayers, onBreaksCalculated, colorblindMode = false }: LeafletMapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const layersRef = useRef<Record<string, any>>({}); // Store references to layers
@@ -198,7 +212,7 @@ function LeafletMap({ city, activeLayers, onBreaksCalculated }: LeafletMapProps)
                 color: '#222',
                 weight: 1,
                 fillOpacity: 0.5,
-                fillColor: getColor(value, breaks),
+                fillColor: getColor(value, breaks, colorblindMode),
               };
             },
             onEachFeature: (feature, layer) => {
@@ -240,7 +254,7 @@ function LeafletMap({ city, activeLayers, onBreaksCalculated }: LeafletMapProps)
       }
       layersRef.current = {};
     };
-  }, [city]);
+  }, [city, colorblindMode]);
 
 
  // Add/remove layers based on activeLayers state
@@ -292,6 +306,8 @@ export default function HomeScreen() {
   const [activeLayers, setActiveLayers] = useState<Set<string>>(new Set(['greenspacePerCapita'])); // Changed default layer
   const [showLayerSelector, setShowLayerSelector] = useState<boolean>(true);
   const [cityBreaks, setCityBreaks] = useState<number[]>([]);
+  const [legendExpanded, setLegendExpanded] = useState<boolean>(true);
+  const [colorblindMode, setColorblindMode] = useState<boolean>(false);
   const animatedHeight = useRef(new Animated.Value(COLLAPSED_HEIGHT)).current;
   const animatedCityHeight = useRef(new Animated.Value(CITY_COLLAPSED_HEIGHT)).current;
 
@@ -394,6 +410,7 @@ export default function HomeScreen() {
             greenSpaceColors={GREEN_SPACE_COLORS} 
             activeLayers={activeLayers}
             onBreaksCalculated={setCityBreaks}
+            colorblindMode={colorblindMode}
           />
         ) : (
           <View style={styles.nativeMapPlaceholder}>
@@ -412,43 +429,70 @@ export default function HomeScreen() {
           <Layers size={20} color="#FFFFFF" />
         </TouchableOpacity>
 
+        <TouchableOpacity 
+          style={styles.colorblindButton}
+          onPress={() => setColorblindMode(!colorblindMode)}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.colorblindButtonText}>
+            {colorblindMode ? '👁️' : '🎨'}
+          </Text>
+        </TouchableOpacity>
+
         {activeLayers.has('greenspacePerCapita') && cityBreaks.length > 0 && (
           <View style={styles.legend}>
-            <Text style={styles.legendTitle}>Greenspace per Capita (m²)</Text>
-            <View style={styles.legendItems}>
-              <View style={styles.legendItem}>
-                <View style={[styles.legendColor, { backgroundColor: '#2d6a4f' }]} />
-                <Text style={styles.legendText}>&gt; {cityBreaks[5]?.toFixed(0)}</Text>
-              </View>
-              <View style={styles.legendItem}>
-                <View style={[styles.legendColor, { backgroundColor: '#21918c' }]} />
-                <Text style={styles.legendText}>{cityBreaks[4]?.toFixed(0)} - {cityBreaks[5]?.toFixed(0)}</Text>
-              </View>
-              <View style={styles.legendItem}>
-                <View style={[styles.legendColor, { backgroundColor: '#5ec962' }]} />
-                <Text style={styles.legendText}>{cityBreaks[3]?.toFixed(0)} - {cityBreaks[4]?.toFixed(0)}</Text>
-              </View>
-              <View style={styles.legendItem}>
-                <View style={[styles.legendColor, { backgroundColor: '#b7e28a' }]} />
-                <Text style={styles.legendText}>{cityBreaks[2]?.toFixed(0)} - {cityBreaks[3]?.toFixed(0)}</Text>
-              </View>
-              <View style={styles.legendItem}>
-                <View style={[styles.legendColor, { backgroundColor: '#f7c948' }]} />
-                <Text style={styles.legendText}>{cityBreaks[1]?.toFixed(0)} - {cityBreaks[2]?.toFixed(0)}</Text>
-              </View>
-              <View style={styles.legendItem}>
-                <View style={[styles.legendColor, { backgroundColor: '#e36c0a' }]} />
-                <Text style={styles.legendText}>{cityBreaks[0]?.toFixed(0)} - {cityBreaks[1]?.toFixed(0)}</Text>
-              </View>
-              <View style={styles.legendItem}>
-                <View style={[styles.legendColor, { backgroundColor: '#bf0000' }]} />
-                <Text style={styles.legendText}>&lt; {cityBreaks[0]?.toFixed(0)}</Text>
-              </View>
-              <View style={styles.legendItem}>
-                <View style={[styles.legendColor, { backgroundColor: '#999999' }]} />
-                <Text style={styles.legendText}>No residents</Text>
-              </View>
+            <View pointerEvents="auto">
+              <TouchableOpacity 
+                onPress={() => {
+                  console.log('Legend clicked, current state:', legendExpanded);
+                  setLegendExpanded(!legendExpanded);
+                }}
+                activeOpacity={0.7}
+                style={[
+                  styles.legendHeader,
+                  Platform.OS === 'web' && { cursor: 'pointer' as any }
+                ]}
+              >
+                <Text style={styles.legendTitle}>Greenspace per Capita (m²)</Text>
+                {legendExpanded ? <ChevronDown size={16} color="#1B5E20" /> : <ChevronUp size={16} color="#1B5E20" />}
+              </TouchableOpacity>
             </View>
+            {legendExpanded && (
+              <View style={styles.legendItems} pointerEvents="box-none">
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendColor, { backgroundColor: colorblindMode ? '#ffff00' : '#2d6a4f' }]} />
+                  <Text style={styles.legendText}>&gt; {cityBreaks[5]?.toFixed(0)}</Text>
+                </View>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendColor, { backgroundColor: colorblindMode ? '#fde724' : '#21918c' }]} />
+                  <Text style={styles.legendText}>{cityBreaks[4]?.toFixed(0)} - {cityBreaks[5]?.toFixed(0)}</Text>
+                </View>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendColor, { backgroundColor: colorblindMode ? '#b5de2b' : '#5ec962' }]} />
+                  <Text style={styles.legendText}>{cityBreaks[3]?.toFixed(0)} - {cityBreaks[4]?.toFixed(0)}</Text>
+                </View>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendColor, { backgroundColor: colorblindMode ? '#6ece58' : '#b7e28a' }]} />
+                  <Text style={styles.legendText}>{cityBreaks[2]?.toFixed(0)} - {cityBreaks[3]?.toFixed(0)}</Text>
+                </View>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendColor, { backgroundColor: colorblindMode ? '#35b779' : '#f7c948' }]} />
+                  <Text style={styles.legendText}>{cityBreaks[1]?.toFixed(0)} - {cityBreaks[2]?.toFixed(0)}</Text>
+                </View>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendColor, { backgroundColor: colorblindMode ? '#31688e' : '#e36c0a' }]} />
+                  <Text style={styles.legendText}>{cityBreaks[0]?.toFixed(0)} - {cityBreaks[1]?.toFixed(0)}</Text>
+                </View>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendColor, { backgroundColor: colorblindMode ? '#440154' : '#bf0000' }]} />
+                  <Text style={styles.legendText}>&lt; {cityBreaks[0]?.toFixed(0)}</Text>
+                </View>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendColor, { backgroundColor: '#999999' }]} />
+                  <Text style={styles.legendText}>No residents</Text>
+                </View>
+              </View>
+            )}
           </View>
         )}
 
@@ -856,6 +900,19 @@ const styles = StyleSheet.create({
     elevation: 4,
     zIndex: 10000,
     width: 240,
+    ...Platform.select({
+      web: {
+        pointerEvents: 'auto' as any,
+      },
+    }),
+  },
+  legendHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    marginBottom: 8,
+    paddingVertical: 4,
   },
   legendItems: {
     gap: 4,
@@ -866,5 +923,25 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     borderWidth: 1,
     borderColor: '#DDD',
+  },
+  colorblindButton: {
+    position: 'absolute',
+    bottom: 90,
+    right: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#2E7D32',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+    zIndex: 1000,
+  },
+  colorblindButtonText: {
+    fontSize: 20,
   },
 });

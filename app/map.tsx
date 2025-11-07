@@ -29,6 +29,7 @@ type LeafletMapProps = {
   city: City;
   greenSpaceColors: Record<string, string>;
   activeLayers: Set<string>;
+  onBreaksCalculated?: (breaks: number[]) => void;
 };
 
 //-----------------------------
@@ -49,7 +50,8 @@ function getBreaks(features: any[], property: string, nClasses: number = 7): num
 
 // Helper function to get color based on value and breaks (matching webapp.js)
 function getColor(value: number | null | undefined, breaks: number[]): string {
-  if (value == null || isNaN(value)) return '#ff38e8ff';
+  if (value == null || isNaN(value)) return '#660000ff'; // no greenspace
+  if (value === -1) return '#999999'; // no residents
   if (value <= breaks[0]) return '#bf0000'; // very low
   if (value <= breaks[1]) return '#e36c0a';
   if (value <= breaks[2]) return '#f7c948';
@@ -59,7 +61,7 @@ function getColor(value: number | null | undefined, breaks: number[]): string {
   return '#2d6a4f'; // highest
 }
 
-function LeafletMap({ city, activeLayers }: LeafletMapProps) {
+function LeafletMap({ city, activeLayers, onBreaksCalculated }: LeafletMapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const layersRef = useRef<Record<string, any>>({}); // Store references to layers
@@ -90,7 +92,7 @@ function LeafletMap({ city, activeLayers }: LeafletMapProps) {
       // Add OpenStreetMap tile layer
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap contributors',
-        maxZoom: 19,
+        maxZoom: 18,
       }).addTo(map);
 
       // Fetch and store the greenspace GeoJSON layer
@@ -184,6 +186,11 @@ function LeafletMap({ city, activeLayers }: LeafletMapProps) {
           const breaks = getBreaks(geojsonData.features, 'greenspace_per_capita', 7);
           console.log('Calculated breaks for greenspace per capita:', breaks);
 
+          // Notify parent component about calculated breaks
+          if (onBreaksCalculated) {
+            onBreaksCalculated(breaks);
+          }
+
           const greenspacePerCapitaLayer = L.geoJSON(geojsonData, {
             style: (feature) => {
               const value = (feature!.properties as any).greenspace_per_capita;
@@ -199,7 +206,11 @@ function LeafletMap({ city, activeLayers }: LeafletMapProps) {
               layer.on('click', function () {
                 layer.bindPopup(
                   `<strong>Greenspace Per Capita</strong><br/>Value: ${
-                    capita !== undefined && capita !== null ? capita.toFixed(2) : 'N/A'
+                    capita === -1
+                      ? 'no residents'
+                      : capita !== undefined && capita !== null
+                      ? capita.toFixed(2)
+                      : 'N/A'
                   } m²`
                 ).openPopup();
               });
@@ -268,16 +279,21 @@ function LeafletMap({ city, activeLayers }: LeafletMapProps) {
 
 //-----------------------------
 
-const COLLAPSED_HEIGHT = 100;
-const EXPANDED_HEIGHT = 500;
+const COLLAPSED_HEIGHT = 80; // Reduced from 100
+const EXPANDED_HEIGHT = 400; // Reduced from 500
+const CITY_COLLAPSED_HEIGHT = 60; // Reduced from 72
+const CITY_EXPANDED_HEIGHT = 150; // Reduced from 180
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const [selectedCity, setSelectedCity] = useState<City>(CITIES[0]);
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
-  const [activeLayers, setActiveLayers] = useState<Set<string>>(new Set(['census'])); 
+  const [cityDrawerExpanded, setCityDrawerExpanded] = useState<boolean>(false);
+  const [activeLayers, setActiveLayers] = useState<Set<string>>(new Set(['greenspacePerCapita'])); // Changed default layer
   const [showLayerSelector, setShowLayerSelector] = useState<boolean>(true);
+  const [cityBreaks, setCityBreaks] = useState<number[]>([]);
   const animatedHeight = useRef(new Animated.Value(COLLAPSED_HEIGHT)).current;
+  const animatedCityHeight = useRef(new Animated.Value(CITY_COLLAPSED_HEIGHT)).current;
 
   const toggleSheet = () => {
     const toValue = isExpanded ? COLLAPSED_HEIGHT : EXPANDED_HEIGHT;
@@ -302,6 +318,17 @@ export default function HomeScreen() {
     });
   };
 
+  const toggleCityDrawer = () => {
+    const toValue = cityDrawerExpanded ? CITY_COLLAPSED_HEIGHT : CITY_EXPANDED_HEIGHT;
+    Animated.spring(animatedCityHeight, {
+      toValue,
+      useNativeDriver: false,
+      tension: 50,
+      friction: 8,
+    }).start();
+    setCityDrawerExpanded(!cityDrawerExpanded);
+  };
+
   return (
     <View style={styles.container}>
       <Stack.Screen
@@ -317,7 +344,14 @@ export default function HomeScreen() {
         }}
       />
 
-      <View style={styles.citySelector}>
+      <Animated.View style={[styles.cityDrawer, { height: animatedCityHeight }]}>
+        <TouchableOpacity style={styles.sheetHeader} onPress={toggleCityDrawer} activeOpacity={0.8}>
+          <View style={styles.dragHandle} />
+          <View style={styles.sheetHeaderContent}>
+            <Text style={styles.factsTitle}>Select City</Text>
+            {cityDrawerExpanded ? <ChevronDown size={24} color="#1B5E20" /> : <ChevronUp size={24} color="#1B5E20" />}
+          </View>
+        </TouchableOpacity>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -330,7 +364,7 @@ export default function HomeScreen() {
                 styles.cityCard,
                 selectedCity.id === city.id && styles.cityCardActive,
               ]}
-              onPress={() => setSelectedCity(city)}
+              onPress={() => { setSelectedCity(city); }}
             >
               <Text
                 style={[
@@ -351,11 +385,16 @@ export default function HomeScreen() {
             </TouchableOpacity>
           ))}
         </ScrollView>
-      </View>
+      </Animated.View>
 
       <View style={styles.mapContainer}>
         {Platform.OS === 'web' ? (
-          <LeafletMap city={selectedCity} greenSpaceColors={GREEN_SPACE_COLORS} activeLayers={activeLayers} />
+          <LeafletMap 
+            city={selectedCity} 
+            greenSpaceColors={GREEN_SPACE_COLORS} 
+            activeLayers={activeLayers}
+            onBreaksCalculated={setCityBreaks}
+          />
         ) : (
           <View style={styles.nativeMapPlaceholder}>
             <MapPin size={48} color="#2E7D32" />
@@ -372,6 +411,46 @@ export default function HomeScreen() {
         >
           <Layers size={20} color="#FFFFFF" />
         </TouchableOpacity>
+
+        {activeLayers.has('greenspacePerCapita') && cityBreaks.length > 0 && (
+          <View style={styles.legend}>
+            <Text style={styles.legendTitle}>Greenspace per Capita (m²)</Text>
+            <View style={styles.legendItems}>
+              <View style={styles.legendItem}>
+                <View style={[styles.legendColor, { backgroundColor: '#2d6a4f' }]} />
+                <Text style={styles.legendText}>&gt; {cityBreaks[5]?.toFixed(0)}</Text>
+              </View>
+              <View style={styles.legendItem}>
+                <View style={[styles.legendColor, { backgroundColor: '#21918c' }]} />
+                <Text style={styles.legendText}>{cityBreaks[4]?.toFixed(0)} - {cityBreaks[5]?.toFixed(0)}</Text>
+              </View>
+              <View style={styles.legendItem}>
+                <View style={[styles.legendColor, { backgroundColor: '#5ec962' }]} />
+                <Text style={styles.legendText}>{cityBreaks[3]?.toFixed(0)} - {cityBreaks[4]?.toFixed(0)}</Text>
+              </View>
+              <View style={styles.legendItem}>
+                <View style={[styles.legendColor, { backgroundColor: '#b7e28a' }]} />
+                <Text style={styles.legendText}>{cityBreaks[2]?.toFixed(0)} - {cityBreaks[3]?.toFixed(0)}</Text>
+              </View>
+              <View style={styles.legendItem}>
+                <View style={[styles.legendColor, { backgroundColor: '#f7c948' }]} />
+                <Text style={styles.legendText}>{cityBreaks[1]?.toFixed(0)} - {cityBreaks[2]?.toFixed(0)}</Text>
+              </View>
+              <View style={styles.legendItem}>
+                <View style={[styles.legendColor, { backgroundColor: '#e36c0a' }]} />
+                <Text style={styles.legendText}>{cityBreaks[0]?.toFixed(0)} - {cityBreaks[1]?.toFixed(0)}</Text>
+              </View>
+              <View style={styles.legendItem}>
+                <View style={[styles.legendColor, { backgroundColor: '#bf0000' }]} />
+                <Text style={styles.legendText}>&lt; {cityBreaks[0]?.toFixed(0)}</Text>
+              </View>
+              <View style={styles.legendItem}>
+                <View style={[styles.legendColor, { backgroundColor: '#999999' }]} />
+                <Text style={styles.legendText}>No residents</Text>
+              </View>
+            </View>
+          </View>
+        )}
 
          {showLayerSelector && (
           <View style={styles.layerSelector}>
@@ -668,7 +747,7 @@ const styles = StyleSheet.create({
   },
   layerButton: {
     position: 'absolute',
-    top: 20,
+    top: 80, // Adjusted from 20 to move it further down
     right: 20,
     width: 44,
     height: 44,
@@ -685,7 +764,7 @@ const styles = StyleSheet.create({
   },
   layerSelector: {
     position: 'absolute',
-    top: 74,
+    top: 120, // Adjusted from 74 to move it further down
     right: 20,
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
@@ -742,5 +821,50 @@ const styles = StyleSheet.create({
   layerOptionDescription: {
     fontSize: 12,
     color: '#558B2F',
+  },
+  cityDrawer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    borderBottomLeftRadius: 16,
+    borderBottomRightRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 8,
+    overflow: 'hidden',
+    zIndex: 1000,
+  },
+  legend: {
+    position: 'absolute',
+    bottom: 75, // Adjusted from 20 to move it up
+    left: '50%',
+    transform: [{ translateX: -120 }],
+    backgroundColor: '#ffffffc5',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 4,
+    zIndex: 10000,
+    width: 240,
+  },
+  legendItems: {
+    gap: 4,
+  },
+  legendColor: {
+    width: 20,
+    height: 16,
+    borderRadius: 3,
+    borderWidth: 1,
+    borderColor: '#DDD',
   },
 });

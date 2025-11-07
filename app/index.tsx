@@ -40,35 +40,57 @@ export default function LandingScreen() {
           </Text>
         </View>
 
-        <View style={styles.featuresContainer}>
-          <View style={styles.featureCard}>
-            <View style={styles.featureIconContainer}>
-              <Globe size={28} color="#2E7D32" />
+        <View style={styles.featuresContainerRow}>
+          <View style={styles.featuresColumn}>
+            <View style={styles.featureCard}>
+              <View style={styles.featureIconContainer}>
+                <MapPin size={28} color="#2E7D32" />
+              </View>
+              <Text style={styles.featureTitle}>Interactive Maps</Text>
+              <Text style={styles.featureDescription}>
+                Explore detailed maps showing parks, forests, gardens, and nature reserves seen from space
+              </Text>
             </View>
-            <Text style={styles.featureTitle}>City Comparison</Text>
-            <Text style={styles.featureDescription}>
-              coming soon:Compare green space coverage and per capita metrics across multiple cities
-            </Text>
+
+            <View style={styles.featureCard}>
+              <View style={styles.featureIconContainer}>
+                <Leaf size={28} color="#2E7D32" />
+              </View>
+              <Text style={styles.featureTitle}>Environmental Data</Text>
+              <Text style={styles.featureDescription}>
+                coming soon:Access comprehensive statistics and insights about urban green spaces
+              </Text>
+            </View>
+
+            <View style={styles.featureCard}>
+              <View style={styles.featureIconContainer}>
+                <Globe size={28} color="#2E7D32" />
+              </View>
+              <Text style={styles.featureTitle}>City Comparison</Text>
+              <Text style={styles.featureDescription}>
+                Compare green space coverage and per capita metrics across multiple cities
+              </Text>
+            </View>
           </View>
 
-          <View style={styles.featureCard}>
-            <View style={styles.featureIconContainer}>
-              <MapPin size={28} color="#2E7D32" />
-            </View>
-            <Text style={styles.featureTitle}>Interactive Maps</Text>
-            <Text style={styles.featureDescription}>
-              Explore detailed maps showing parks, forests, gardens, and nature reserves seen from space
-            </Text>
-          </View>
-
-          <View style={styles.featureCard}>
-            <View style={styles.featureIconContainer}>
-              <Leaf size={28} color="#2E7D32" />
-            </View>
-            <Text style={styles.featureTitle}>Environmental Data</Text>
-            <Text style={styles.featureDescription}>
-              coming soon:Access comprehensive statistics and insights about urban green spaces
-            </Text>
+          <View style={styles.exploreColumn}>
+            <TouchableOpacity
+              style={styles.exploreButton}
+              onPress={() => router.push('/map')}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.exploreButtonText}>Explore Maps</Text>
+              <ArrowRight size={18} color="#FFFFFF" />
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={styles.compareButton}
+              onPress={() => router.push('/compare')}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.compareButtonText}>Compare Cities</Text>
+              <ArrowRight size={18} color="#FFFFFF" />
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -94,14 +116,7 @@ export default function LandingScreen() {
           </View>
         </View>
 
-        <TouchableOpacity
-          style={styles.ctaButton}
-          onPress={() => router.push('/map')}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.ctaText}>Explore the Map</Text>
-          <ArrowRight size={24} color="#FFFFFF" />
-        </TouchableOpacity>
+        {/* Bottom CTA removed - replaced by right-side Explore Map button */}
       </ScrollView>
     </View>
   );
@@ -172,6 +187,22 @@ const styles = StyleSheet.create({
     gap: 16,
     marginBottom: 40,
   },
+  featuresContainerRow: {
+    flexDirection: 'row',
+    gap: 16,
+    marginBottom: 40,
+    alignItems: 'stretch',
+    justifyContent: 'space-between',
+  },
+  featuresColumn: {
+    width: '90%',
+  },
+  exploreColumn: {
+    width: 120,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 16,
+  },
   featureCard: {
     backgroundColor: '#FFFFFF',
     padding: 24,
@@ -181,6 +212,8 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 12,
     elevation: 3,
+    width: '100%',
+    alignSelf: 'flex-start',
   },
   featureIconContainer: {
     width: 56,
@@ -201,6 +234,42 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#558B2F',
     lineHeight: 22,
+  },
+  exploreButton: {
+    backgroundColor: '#2E7D32',
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'column',
+    gap: 8,
+    width: '100%',
+    flex: 1,
+  },
+  exploreButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '800' as const,
+    fontSize: 15,
+    textAlign: 'center',
+  },
+  compareButton: {
+    backgroundColor: '#1B5E20',
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'column',
+    gap: 8,
+    width: '100%',
+    flex: 1,
+  },
+  compareButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '800' as const,
+    fontSize: 15,
+    textAlign: 'center',
   },
   statsContainer: {
     backgroundColor: '#2E7D32',

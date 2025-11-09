@@ -529,65 +529,69 @@ export default function HomeScreen() {
         )}
 
          {showLayerSelector && (
-          <View style={styles.layerSelector}>
+          <View style={[styles.layerSelector, { maxHeight: windowDimensions.height - 150 }]}>
             <Text style={styles.layerSelectorTitle}>Map Layers</Text>
-            
-            <TouchableOpacity 
-              style={styles.layerOption}
-              onPress={() => toggleLayer('census')}
-              activeOpacity={0.7}
+            <ScrollView 
+              style={styles.layerScrollView}
+              showsVerticalScrollIndicator={false}
             >
-              <View style={[
-                styles.layerCheckbox,
-                activeLayers.has('census') && styles.layerCheckboxActive
-              ]}>
-                {activeLayers.has('census') && (
-                  <View style={styles.layerCheckboxInner} />
-                )}
-              </View>
-              <View style={styles.layerOptionContent}>
-                <Text style={styles.layerOptionTitle}>Census Tracts</Text>
-                <Text style={styles.layerOptionDescription}>City boundaries and demographics</Text>
-              </View>
-            </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.layerOption}
+                onPress={() => toggleLayer('census')}
+                activeOpacity={0.7}
+              >
+                <View style={[
+                  styles.layerCheckbox,
+                  activeLayers.has('census') && styles.layerCheckboxActive
+                ]}>
+                  {activeLayers.has('census') && (
+                    <View style={styles.layerCheckboxInner} />
+                  )}
+                </View>
+                <View style={styles.layerOptionContent}>
+                  <Text style={styles.layerOptionTitle}>Census Tracts</Text>
+                  <Text style={styles.layerOptionDescription}>City boundaries and demographics</Text>
+                </View>
+              </TouchableOpacity>
 
-            <TouchableOpacity 
-              style={styles.layerOption}
-              onPress={() => toggleLayer('greenspace')}
-              activeOpacity={0.7}
-            >
-              <View style={[
-                styles.layerCheckbox,
-                activeLayers.has('greenspace') && styles.layerCheckboxActive
-              ]}>
-                {activeLayers.has('greenspace') && (
-                  <View style={styles.layerCheckboxInner} />
-                )}
-              </View>
-              <View style={styles.layerOptionContent}>
-                <Text style={styles.layerOptionTitle}>Green Space</Text>
-                <Text style={styles.layerOptionDescription}>Area coverage of dense vegetation seen from space</Text>
-              </View>
-            </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.layerOption}
+                onPress={() => toggleLayer('greenspace')}
+                activeOpacity={0.7}
+              >
+                <View style={[
+                  styles.layerCheckbox,
+                  activeLayers.has('greenspace') && styles.layerCheckboxActive
+                ]}>
+                  {activeLayers.has('greenspace') && (
+                    <View style={styles.layerCheckboxInner} />
+                  )}
+                </View>
+                <View style={styles.layerOptionContent}>
+                  <Text style={styles.layerOptionTitle}>Green Space</Text>
+                  <Text style={styles.layerOptionDescription}>Area coverage of dense vegetation seen from space</Text>
+                </View>
+              </TouchableOpacity>
 
-            <TouchableOpacity 
-              style={styles.layerOption}
-              onPress={() => toggleLayer('greenspacePerCapita')}
-              activeOpacity={0.7}
-            >
-              <View style={[
-                styles.layerCheckbox,
-                activeLayers.has('greenspacePerCapita') && styles.layerCheckboxActive
-              ]}>
-                {activeLayers.has('greenspacePerCapita') && (
-                  <View style={styles.layerCheckboxInner} />
-                )}
-              </View>
-              <View style={styles.layerOptionContent}>
-                <Text style={styles.layerOptionTitle}>Greenspace per person</Text>
-                <Text style={styles.layerOptionDescription}>per capita greenspace allocation within a census tract</Text>
-              </View>
-            </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.layerOption}
+                onPress={() => toggleLayer('greenspacePerCapita')}
+                activeOpacity={0.7}
+              >
+                <View style={[
+                  styles.layerCheckbox,
+                  activeLayers.has('greenspacePerCapita') && styles.layerCheckboxActive
+                ]}>
+                  {activeLayers.has('greenspacePerCapita') && (
+                    <View style={styles.layerCheckboxInner} />
+                  )}
+                </View>
+                <View style={styles.layerOptionContent}>
+                  <Text style={styles.layerOptionTitle}>Greenspace per person</Text>
+                  <Text style={styles.layerOptionDescription}>per capita greenspace allocation within a census tract</Text>
+                </View>
+              </TouchableOpacity>
+            </ScrollView>
           </View>
         )}
       </View>
@@ -849,7 +853,7 @@ const styles = StyleSheet.create({
   },
   layerButton: {
     position: 'absolute',
-    top: 80, // Adjusted from 20 to move it further down
+    top: 65, // moved up 75 from previous 80
     right: 20,
     width: 44,
     height: 44,
@@ -878,6 +882,9 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 8,
     zIndex: 10000,
+  },
+  layerScrollView: {
+    flex: 1,
   },
   layerSelectorTitle: {
     fontSize: 16,

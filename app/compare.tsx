@@ -300,12 +300,30 @@ export default function CompareScreen() {
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
   const [cityDrawerExpanded, setCityDrawerExpanded] = useState<boolean>(false);
   const [activeLayers, setActiveLayers] = useState<Set<string>>(new Set(['greenspacePerCapita'])); // Changed default layer
-  const [showLayerSelector, setShowLayerSelector] = useState<boolean>(true);
   const [sharedBreaks, setSharedBreaks] = useState<number[]>([]);
   const [legendExpanded, setLegendExpanded] = useState<boolean>(true);
   const [colorblindMode, setColorblindMode] = useState<boolean>(false);
   const animatedHeight = useRef(new Animated.Value(COLLAPSED_HEIGHT)).current;
   const animatedCityHeight = useRef(new Animated.Value(CITY_COLLAPSED_HEIGHT)).current;
+  
+  // Detect if using a smartphone (based on screen dimensions) - updates on rotation
+  // Mobile/compact mode when EITHER width OR height is < 768 (includes landscape on phones)
+  const [windowDimensions, setWindowDimensions] = useState(Dimensions.get('window'));
+  const isSmartphone = windowDimensions.width < 768 || windowDimensions.height < 768;
+  const [showLayerSelector, setShowLayerSelector] = useState<boolean>(!isSmartphone);
+  
+  // Listen for dimension changes (rotation, window resize)
+  useEffect(() => {
+    const subscription = Dimensions.addEventListener('change', ({ window }) => {
+      setWindowDimensions(window);
+      // Close layer selector on mobile to prevent overlap
+      if (window.width < 768 || window.height < 768) {
+        setShowLayerSelector(false);
+      }
+    });
+    
+    return () => subscription?.remove();
+  }, []);
 
   // Calculate shared breaks when cities change
   useEffect(() => {
@@ -396,16 +414,26 @@ export default function CompareScreen() {
         }}
       />
 
-      <Animated.View style={[styles.cityDrawer, { height: animatedCityHeight }]}>
-        <TouchableOpacity style={styles.sheetHeader} onPress={toggleCityDrawer} activeOpacity={0.8}>
-          <View style={styles.dragHandle} />
-          <View style={styles.sheetHeaderContent}>
-            <Text style={styles.factsTitle}>Select Cities to Compare</Text>
-            {cityDrawerExpanded ? <ChevronDown size={24} color="#1B5E20" /> : <ChevronUp size={24} color="#1B5E20" />}
-          </View>
+      {isSmartphone && !cityDrawerExpanded ? (
+        <TouchableOpacity 
+          style={styles.cityButtonCompact}
+          onPress={toggleCityDrawer}
+          activeOpacity={0.8}
+        >
+          <MapPin size={20} color="#FFFFFF" />
+          <Text style={styles.cityButtonText}>{leftCity.name} vs {rightCity.name}</Text>
         </TouchableOpacity>
-        
-        <View style={styles.citySelectorContainer}>
+      ) : (
+        <Animated.View style={[styles.cityDrawer, { height: animatedCityHeight }]}>
+          <TouchableOpacity style={styles.sheetHeader} onPress={toggleCityDrawer} activeOpacity={0.8}>
+            <View style={styles.dragHandle} />
+            <View style={styles.sheetHeaderContent}>
+              <Text style={styles.factsTitle}>Select Cities to Compare</Text>
+              {cityDrawerExpanded ? <ChevronDown size={24} color="#1B5E20" /> : <ChevronUp size={24} color="#1B5E20" />}
+            </View>
+          </TouchableOpacity>
+          
+          <View style={styles.citySelectorContainer}>
           <View style={styles.citySelectorSection}>
             <Text style={styles.citySelectorLabel}>Left City</Text>
             <ScrollView
@@ -480,7 +508,8 @@ export default function CompareScreen() {
             </ScrollView>
           </View>
         </View>
-      </Animated.View>
+        </Animated.View>
+      )}
 
       <View style={styles.splitMapContainer}>
         <View style={styles.leftMapContainer}>
@@ -566,7 +595,10 @@ export default function CompareScreen() {
         </TouchableOpacity>
 
         {activeLayers.has('greenspacePerCapita') && sharedBreaks.length > 0 && (
-          <View style={styles.legend}>
+          <View style={[
+            styles.legend,
+            isSmartphone && { bottom: insets.bottom + 20, left: 220, transform: [] }
+          ]}>
             <View pointerEvents="auto">
               <TouchableOpacity 
                 onPress={() => {
@@ -686,29 +718,49 @@ export default function CompareScreen() {
         )}
       </View>
 
-      <Animated.View style={[styles.factsContainer, { height: animatedHeight, paddingBottom: 20 + insets.bottom }]}>
+      {isSmartphone && !isExpanded ? (
         <TouchableOpacity 
-          style={styles.sheetHeader}
+          style={[styles.factsButtonCompact, { bottom: insets.bottom + 20 }]}
           onPress={toggleSheet}
-          activeOpacity={0.7}
+          activeOpacity={0.8}
         >
-          <View style={styles.dragHandle} />
-          <View style={styles.sheetHeaderContent}>
-            <Text style={styles.factsTitle}>Comparison Stats</Text>
-            {isExpanded ? (
-              <ChevronDown size={24} color="#1B5E20" />
-            ) : (
-              <ChevronUp size={24} color="#1B5E20" />
-            )}
-          </View>
+          <Leaf size={20} color="#FFFFFF" />
+          <Text style={styles.factsButtonText}>Comparison Stats</Text>
         </TouchableOpacity>
-        
+      ) : (
+        <Animated.View style={[
+          styles.factsContainer, 
+          { 
+            height: animatedHeight, 
+            paddingBottom: 20 + insets.bottom,
+            maxHeight: windowDimensions.height - 100, // Prevent overflow
+          }
+        ]}>
+          <TouchableOpacity 
+            style={styles.sheetHeader}
+            onPress={toggleSheet}
+            activeOpacity={0.7}
+          >
+            <View style={styles.dragHandle} />
+            <View style={styles.sheetHeaderContent}>
+              <Text style={styles.factsTitle}>Comparison Stats</Text>
+              {isExpanded ? (
+                <ChevronDown size={24} color="#1B5E20" />
+              ) : (
+                <ChevronUp size={24} color="#1B5E20" />
+              )}
+            </View>
+          </TouchableOpacity>
+          <ScrollView 
+            style={styles.factsScrollView}
+            showsVerticalScrollIndicator={false}
+          >
         <View style={styles.comparisonGrid}>
           <View style={styles.comparisonColumn}>
             <Text style={styles.comparisonCityName}>{leftCity.name}</Text>
             <View style={styles.factCard}>
               <View style={styles.factIconContainer}>
-                <Leaf size={20} color="#2E7D32" />
+                <Leaf size={18} color="#2E7D32" />
               </View>
               <Text style={styles.factValue}>
                 {leftCity.greenSpacePercentage}%
@@ -717,9 +769,9 @@ export default function CompareScreen() {
             </View>
             <View style={styles.factCard}>
               <View style={styles.factIconContainer}>
-                <Users size={20} color="#2E7D32" />
+                <Users size={18} color="#2E7D32" />
               </View>
-              <Text style={styles.factValue}>
+              <Text style={styles.factValue} numberOfLines={2} adjustsFontSizeToFit>
                 {(leftCity.greenSpacePercentage * leftCity.totalArea / leftCity.population * 1000000).toFixed(0)} m²
               </Text>
               <Text style={styles.factLabel}>Per Capita</Text>
@@ -732,7 +784,7 @@ export default function CompareScreen() {
             <Text style={styles.comparisonCityName}>{rightCity.name}</Text>
             <View style={styles.factCard}>
               <View style={styles.factIconContainer}>
-                <Leaf size={20} color="#2E7D32" />
+                <Leaf size={18} color="#2E7D32" />
               </View>
               <Text style={styles.factValue}>
                 {rightCity.greenSpacePercentage}%
@@ -741,16 +793,18 @@ export default function CompareScreen() {
             </View>
             <View style={styles.factCard}>
               <View style={styles.factIconContainer}>
-                <Users size={20} color="#2E7D32" />
+                <Users size={18} color="#2E7D32" />
               </View>
-              <Text style={styles.factValue}>
+              <Text style={styles.factValue} numberOfLines={2} adjustsFontSizeToFit>
                 {(rightCity.greenSpacePercentage * rightCity.totalArea / rightCity.population * 1000000).toFixed(0)} m²
               </Text>
               <Text style={styles.factLabel}>Per Capita</Text>
             </View>
           </View>
         </View>
-      </Animated.View>
+          </ScrollView>
+        </Animated.View>
+      )}
     </View>
   );
 }
@@ -841,6 +895,9 @@ const styles = StyleSheet.create({
     elevation: 5,
     overflow: 'hidden',
   },
+  factsScrollView: {
+    flex: 1,
+  },
   sheetHeader: {
     alignItems: 'center',
     paddingTop: 8,
@@ -872,31 +929,33 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   factCard: {
-    flex: 1,
-    minWidth: (width - 56) / 2,
     backgroundColor: '#F5F9F5',
-    padding: 16,
+    padding: 12,
     borderRadius: 16,
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
+    minWidth: 0, // Allow card to shrink
   },
   factIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: '#E8F5E9',
     justifyContent: 'center',
     alignItems: 'center',
   },
   factValue: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: '700' as const,
     color: '#1B5E20',
+    textAlign: 'center',
+    flexWrap: 'wrap',
   },
   factLabel: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#558B2F',
     textAlign: 'center',
+    flexWrap: 'wrap',
   },
   legendContainer: {
     backgroundColor: '#F5F9F5',
@@ -1092,24 +1151,26 @@ const styles = StyleSheet.create({
   },
   comparisonGrid: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 8,
     marginTop: 16,
     marginBottom: 16,
   },
   comparisonColumn: {
     flex: 1,
     gap: 8,
+    minWidth: 0, // Allow column to shrink below content size
   },
   comparisonDivider: {
     width: 1,
     backgroundColor: '#C8E6C9',
   },
   comparisonCityName: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '700' as const,
     color: '#1B5E20',
     textAlign: 'center',
     marginBottom: 8,
+    flexWrap: 'wrap',
   },
   legend: {
     position: 'absolute',
@@ -1170,5 +1231,50 @@ const styles = StyleSheet.create({
   },
   colorblindButtonText: {
     fontSize: 20,
+  },
+  cityButtonCompact: {
+    position: 'absolute',
+    top: 20,
+    left: 45,
+    backgroundColor: '#2E7D32',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+    zIndex: 1000,
+  },
+  cityButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700' as const,
+  },
+  factsButtonCompact: {
+    position: 'absolute',
+    left: 20,
+    backgroundColor: '#2E7D32',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+    zIndex: 1000,
+  },
+  factsButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700' as const,
   },
 });

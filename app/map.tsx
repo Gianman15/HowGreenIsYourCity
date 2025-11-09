@@ -304,12 +304,30 @@ export default function HomeScreen() {
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
   const [cityDrawerExpanded, setCityDrawerExpanded] = useState<boolean>(false);
   const [activeLayers, setActiveLayers] = useState<Set<string>>(new Set(['greenspacePerCapita'])); // Changed default layer
-  const [showLayerSelector, setShowLayerSelector] = useState<boolean>(true);
   const [cityBreaks, setCityBreaks] = useState<number[]>([]);
   const [legendExpanded, setLegendExpanded] = useState<boolean>(true);
   const [colorblindMode, setColorblindMode] = useState<boolean>(false);
   const animatedHeight = useRef(new Animated.Value(COLLAPSED_HEIGHT)).current;
   const animatedCityHeight = useRef(new Animated.Value(CITY_COLLAPSED_HEIGHT)).current;
+  
+  // Detect if using a smartphone (based on screen dimensions) - updates on rotation
+  // Mobile/compact mode when EITHER width OR height is < 768 (includes landscape on phones)
+  const [windowDimensions, setWindowDimensions] = useState(Dimensions.get('window'));
+  const isSmartphone = windowDimensions.width < 768 || windowDimensions.height < 768;
+  const [showLayerSelector, setShowLayerSelector] = useState<boolean>(!isSmartphone);
+  
+  // Listen for dimension changes (rotation, window resize)
+  useEffect(() => {
+    const subscription = Dimensions.addEventListener('change', ({ window }) => {
+      setWindowDimensions(window);
+      // Close layer selector on mobile to prevent overlap
+      if (window.width < 768 || window.height < 768) {
+        setShowLayerSelector(false);
+      }
+    });
+    
+    return () => subscription?.remove();
+  }, []);
 
   const toggleSheet = () => {
     const toValue = isExpanded ? COLLAPSED_HEIGHT : EXPANDED_HEIGHT;
@@ -360,48 +378,59 @@ export default function HomeScreen() {
         }}
       />
 
-      <Animated.View style={[styles.cityDrawer, { height: animatedCityHeight }]}>
-        <TouchableOpacity style={styles.sheetHeader} onPress={toggleCityDrawer} activeOpacity={0.8}>
-          <View style={styles.dragHandle} />
-          <View style={styles.sheetHeaderContent}>
-            <Text style={styles.factsTitle}>Select City</Text>
-            {cityDrawerExpanded ? <ChevronDown size={24} color="#1B5E20" /> : <ChevronUp size={24} color="#1B5E20" />}
-          </View>
-        </TouchableOpacity>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.citySelectorContent}
+      {isSmartphone && !cityDrawerExpanded ? (
+        <TouchableOpacity 
+          style={styles.cityButtonCompact}
+          onPress={toggleCityDrawer}
+          activeOpacity={0.8}
         >
-          {CITIES.map((city) => (
-            <TouchableOpacity
-              key={city.id}
-              style={[
-                styles.cityCard,
-                selectedCity.id === city.id && styles.cityCardActive,
-              ]}
-              onPress={() => { setSelectedCity(city); }}
-            >
-              <Text
+          <MapPin size={20} color="#FFFFFF" />
+          <Text style={styles.cityButtonText}>{selectedCity.name}</Text>
+        </TouchableOpacity>
+      ) : (
+        <Animated.View style={[styles.cityDrawer, { height: animatedCityHeight }]}>
+          <TouchableOpacity style={styles.sheetHeader} onPress={toggleCityDrawer} activeOpacity={0.8}>
+            <View style={styles.dragHandle} />
+            <View style={styles.sheetHeaderContent}>
+              <Text style={styles.factsTitle}>Select City</Text>
+              {cityDrawerExpanded ? <ChevronDown size={24} color="#1B5E20" /> : <ChevronUp size={24} color="#1B5E20" />}
+            </View>
+          </TouchableOpacity>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.citySelectorContent}
+          >
+            {CITIES.map((city) => (
+              <TouchableOpacity
+                key={city.id}
                 style={[
-                  styles.cityCardName,
-                  selectedCity.id === city.id && styles.cityCardNameActive,
+                  styles.cityCard,
+                  selectedCity.id === city.id && styles.cityCardActive,
                 ]}
+                onPress={() => { setSelectedCity(city); }}
               >
-                {city.name}
-              </Text>
-              <Text
-                style={[
-                  styles.cityCardCountry,
-                  selectedCity.id === city.id && styles.cityCardCountryActive,
-                ]}
-              >
-                {city.country}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </Animated.View>
+                <Text
+                  style={[
+                    styles.cityCardName,
+                    selectedCity.id === city.id && styles.cityCardNameActive,
+                  ]}
+                >
+                  {city.name}
+                </Text>
+                <Text
+                  style={[
+                    styles.cityCardCountry,
+                    selectedCity.id === city.id && styles.cityCardCountryActive,
+                  ]}
+                >
+                  {city.country}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </Animated.View>
+      )}
 
       <View style={styles.mapContainer}>
         {Platform.OS === 'web' ? (
@@ -440,7 +469,10 @@ export default function HomeScreen() {
         </TouchableOpacity>
 
         {activeLayers.has('greenspacePerCapita') && cityBreaks.length > 0 && (
-          <View style={styles.legend}>
+          <View style={[
+            styles.legend,
+            isSmartphone && { bottom: insets.bottom + 20, left: 220, transform: [] }
+          ]}>
             <View pointerEvents="auto">
               <TouchableOpacity 
                 onPress={() => {
@@ -560,22 +592,43 @@ export default function HomeScreen() {
         )}
       </View>
 
-      <Animated.View style={[styles.factsContainer, { height: animatedHeight, paddingBottom: 20 + insets.bottom }]}>
+      {isSmartphone && !isExpanded ? (
         <TouchableOpacity 
-          style={styles.sheetHeader}
+          style={[styles.factsButtonCompact, { bottom: insets.bottom + 20 }]}
           onPress={toggleSheet}
-          activeOpacity={0.7}
+          activeOpacity={0.8}
         >
-          <View style={styles.dragHandle} />
-          <View style={styles.sheetHeaderContent}>
-            <Text style={styles.factsTitle}>Green Space Facts</Text>
-            {isExpanded ? (
-              <ChevronDown size={24} color="#1B5E20" />
-            ) : (
-              <ChevronUp size={24} color="#1B5E20" />
-            )}
-          </View>
+          <Leaf size={20} color="#FFFFFF" />
+          <Text style={styles.factsButtonText}>Green Space Facts</Text>
         </TouchableOpacity>
+      ) : (
+        <Animated.View style={[
+          styles.factsContainer, 
+          { 
+            height: animatedHeight, 
+            paddingBottom: 20 + insets.bottom,
+            maxHeight: windowDimensions.height - 100, // Prevent overflow
+          }
+        ]}>
+          <TouchableOpacity 
+            style={styles.sheetHeader}
+            onPress={toggleSheet}
+            activeOpacity={0.7}
+          >
+            <View style={styles.dragHandle} />
+            <View style={styles.sheetHeaderContent}>
+              <Text style={styles.factsTitle}>Green Space Facts</Text>
+              {isExpanded ? (
+                <ChevronDown size={24} color="#1B5E20" />
+              ) : (
+                <ChevronUp size={24} color="#1B5E20" />
+              )}
+            </View>
+          </TouchableOpacity>
+          <ScrollView 
+            style={styles.factsScrollView}
+            showsVerticalScrollIndicator={false}
+          >
         <View style={styles.factsGrid}>
           <View style={styles.factCard}>
             <View style={styles.factIconContainer}>
@@ -611,7 +664,9 @@ export default function HomeScreen() {
             ))}
           </View>
         </View>
-      </Animated.View>
+          </ScrollView>
+        </Animated.View>
+      )}
     </View>
   );
 }
@@ -701,6 +756,9 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 5,
     overflow: 'hidden',
+  },
+  factsScrollView: {
+    flex: 1,
   },
   sheetHeader: {
     alignItems: 'center',
@@ -943,5 +1001,50 @@ const styles = StyleSheet.create({
   },
   colorblindButtonText: {
     fontSize: 20,
+  },
+  cityButtonCompact: {
+    position: 'absolute',
+    top: 20,
+    left: 45,
+    backgroundColor: '#2E7D32',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+    zIndex: 1000,
+  },
+  cityButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700' as const,
+  },
+  factsButtonCompact: {
+    position: 'absolute',
+    left: 20,
+    backgroundColor: '#2E7D32',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+    zIndex: 1000,
+  },
+  factsButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700' as const,
   },
 });

@@ -5,6 +5,8 @@ import {
   Text,
   TouchableOpacity,
   ScrollView,
+  Dimensions,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -13,6 +15,10 @@ import { Leaf, MapPin, Trees, Globe, ArrowRight } from 'lucide-react-native';
 export default function LandingScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  
+  // Detect if using a smartphone (based on screen width)
+  const windowWidth = Dimensions.get('window').width;
+  const isSmartphone = windowWidth < 768;
 
   return (
     <View style={styles.container}>
@@ -34,7 +40,9 @@ export default function LandingScreen() {
             </View>
           </View>
 
-          <Text style={styles.title}>Urban Green Spaces</Text>
+          <Text style={styles.title}>
+            {isSmartphone ? 'Urban Green Spaces (mobile)' : 'Urban Green Spaces'}
+          </Text>
           <Text style={styles.subtitle}>
             Discover and compare green space coverage across major cities in Canada!
           </Text>

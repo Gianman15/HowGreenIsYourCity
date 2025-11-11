@@ -1,0 +1,11 @@
+{
+  "city_name": "toronto",
+  "cduid": "3520",
+  "average_greenspace_per_capita_m2": 113.18,
+  "total_greenspace_area_km2": 335.69,
+  "total_population": 2966049,
+  "greenspace_percentage": 39.33,
+  "total_land_area_km2": 853.46,
+  "number_of_census_tracts": 618,
+  "tracts_with_population": 618
+}

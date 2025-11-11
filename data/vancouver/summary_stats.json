@@ -1,0 +1,11 @@
+{
+  "city_name": "vancouver",
+  "cduid": "5915",
+  "average_greenspace_per_capita_m2": 1217.32,
+  "total_greenspace_area_km2": 3235.11,
+  "total_population": 2657561,
+  "greenspace_percentage": 103.05,
+  "total_land_area_km2": 3139.31,
+  "number_of_census_tracts": 537,
+  "tracts_with_population": 536
+}

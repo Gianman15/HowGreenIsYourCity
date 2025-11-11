@@ -79,9 +79,14 @@ function LeafletMap({ city, activeLayers, sharedBreaks, colorblindMode = false }
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const layersRef = useRef<Record<string, any>>({}); // Store references to layers
+  const geojsonDataRef = useRef<any>(null); // Store GeoJSON data for re-rendering
+  const [dataLoaded, setDataLoaded] = useState(false);
 
+  // Initialize map only once per city
   useEffect(() => {
     if (Platform.OS !== 'web' || !mapRef.current) return;
+    
+    setDataLoaded(false);
 
     const initMap = async () => {
       const L = await import('leaflet');
@@ -94,6 +99,7 @@ function LeafletMap({ city, activeLayers, sharedBreaks, colorblindMode = false }
       
       // Clear layer references
       layersRef.current = {};
+      geojsonDataRef.current = null;
 
       if (!mapRef.current) return;
 
@@ -185,7 +191,7 @@ function LeafletMap({ city, activeLayers, sharedBreaks, colorblindMode = false }
         }
       }
 
-      // Fetch and store the greenspace per capita GeoJSON layer
+      // Fetch and store the greenspace per capita GeoJSON data
       if (city.geojsonFiles?.greenspacePerCapita) {
         try {
           const response = await fetch(city.geojsonFiles.greenspacePerCapita);
@@ -195,47 +201,13 @@ function LeafletMap({ city, activeLayers, sharedBreaks, colorblindMode = false }
             );
           }
           const geojsonData = await response.json();
-
-          // Use shared breaks if provided, otherwise calculate from this city's data
-          const breaks = sharedBreaks || getBreaks(geojsonData.features, 'greenspace_per_capita', 7);
-          console.log('Using breaks for greenspace per capita:', breaks);
-
-          const greenspacePerCapitaLayer = L.geoJSON(geojsonData, {
-            style: (feature) => {
-              const value = (feature!.properties as any).greenspace_per_capita;
-              return {
-                color: '#222',
-                weight: 1,
-                fillOpacity: 0.5,
-                fillColor: getColor(value, breaks, colorblindMode),
-              };
-            },
-            onEachFeature: (feature, layer) => {
-              const capita = (feature!.properties as any).greenspace_per_capita;
-              layer.on('click', function () {
-                layer.bindPopup(
-                  `<strong>Greenspace Per Capita</strong><br/>Value: ${
-                    capita === -1
-                      ? 'no residents'
-                      : capita !== undefined && capita !== null
-                      ? capita.toFixed(2)
-                      : 'N/A'
-                  } m²`
-                ).openPopup();
-              });
-            },
-          });
-
-          layersRef.current.greenspacePerCapita = greenspacePerCapitaLayer;
-          
-          // Add to map immediately if it's in the default active layers
-          if (activeLayers.has('greenspacePerCapita')) {
-            greenspacePerCapitaLayer.addTo(map);
-          }
+          geojsonDataRef.current = geojsonData;
+          setDataLoaded(true);
         } catch (error) {
           console.error(`Error loading greenspace per capita GeoJSON data:`, error);
         }
       }
+      
       mapInstanceRef.current = map;
     };
 
@@ -248,8 +220,66 @@ function LeafletMap({ city, activeLayers, sharedBreaks, colorblindMode = false }
         mapInstanceRef.current = null;
       }
       layersRef.current = {};
+      geojsonDataRef.current = null;
+      setDataLoaded(false);
     };
-  }, [city, colorblindMode]);
+  }, [city]);
+
+  // Update greenspace per capita layer when breaks or colorblind mode changes
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !mapInstanceRef.current || !geojsonDataRef.current || !dataLoaded) return;
+
+    const updatePerCapitaLayer = async () => {
+      const L = await import('leaflet');
+      const map = mapInstanceRef.current;
+      
+      // Remove existing layer if it exists
+      if (layersRef.current.greenspacePerCapita && map.hasLayer(layersRef.current.greenspacePerCapita)) {
+        map.removeLayer(layersRef.current.greenspacePerCapita);
+      }
+
+      // Use shared breaks if provided AND valid, otherwise calculate from this city's data
+      const breaks = (sharedBreaks && sharedBreaks.length > 0) 
+        ? sharedBreaks 
+        : getBreaks(geojsonDataRef.current.features, 'greenspace_per_capita', 7);
+      console.log('Using breaks for greenspace per capita:', breaks);
+
+      const greenspacePerCapitaLayer = L.geoJSON(geojsonDataRef.current, {
+        style: (feature) => {
+          const value = (feature!.properties as any).greenspace_per_capita;
+          return {
+            color: '#222',
+            weight: 1,
+            fillOpacity: 0.5,
+            fillColor: getColor(value, breaks, colorblindMode),
+          };
+        },
+        onEachFeature: (feature, layer) => {
+          const capita = (feature!.properties as any).greenspace_per_capita;
+          layer.on('click', function () {
+            layer.bindPopup(
+              `<strong>Greenspace Per Capita</strong><br/>Value: ${
+                capita === -1
+                  ? 'no residents'
+                  : capita !== undefined && capita !== null
+                  ? capita.toFixed(2)
+                  : 'N/A'
+              } m²`
+            ).openPopup();
+          });
+        },
+      });
+
+      layersRef.current.greenspacePerCapita = greenspacePerCapitaLayer;
+      
+      // Add to map if it's in the active layers
+      if (activeLayers.has('greenspacePerCapita')) {
+        greenspacePerCapitaLayer.addTo(map);
+      }
+    };
+
+    updatePerCapitaLayer();
+  }, [dataLoaded, sharedBreaks, colorblindMode, activeLayers]);
 
 
  // Add/remove layers based on activeLayers state

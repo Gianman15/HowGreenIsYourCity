@@ -123,7 +123,7 @@ def clip_geojson_to_CD(input_file, output_dir, census_div_shapefile, cduid=None)
     gdf = gdf.to_crs(epsg=4326)
     clipped_gdf = gpd.clip(gdf, cd_geometry)
     os.makedirs(output_dir, exist_ok=True)
-    output_file = os.path.join(output_dir, f"greenspace_{cduid}.geojson")
+    output_file = os.path.join(output_dir, f"greenspace_clipped_{cduid}.geojson")
     clipped_gdf.to_file(output_file, driver="GeoJSON")
     print(f"Clipped GeoJSON saved to: {output_file}")
     return output_file
@@ -277,9 +277,11 @@ def process_greenspace_data(input_file, output_dir):
         greenspace_capita['CTUID'] = greenspace_capita['CTUID'].astype(str)
         greenspace_capita['pop21'] = pd.to_numeric(greenspace_capita['pop21'], errors='coerce')
         greenspace_sum = greenspace_capita.copy()
-        greenspace_sum['greenspace_per_capita'] = greenspace_sum['greenspace_area'] / greenspace_sum['pop21']
-        greenspace_sum['greenspace_per_capita'] = greenspace_sum['greenspace_area'] / greenspace_sum['pop21']
-        greenspace_sum.loc[greenspace_sum['greenspace_area'] == 0, 'greenspace_per_capita'] = 0.0
+        greenspace_sum['greenspace_per_capita'] = 0.0
+        has_pop_mask = greenspace_sum['pop21'].notna() & (greenspace_sum['pop21'] > 0)
+        greenspace_sum.loc[has_pop_mask, 'greenspace_per_capita'] = (
+            greenspace_sum.loc[has_pop_mask, 'greenspace_area'] / greenspace_sum.loc[has_pop_mask, 'pop21']
+        )
         no_pop_mask = greenspace_sum['pop21'].isna() | (greenspace_sum['pop21'] <= 0)
         greenspace_sum.loc[no_pop_mask, 'greenspace_per_capita'] = -1.0
         save_dir = os.path.join(input_dir, os.path.basename(input_file))
@@ -302,6 +304,7 @@ def process_greenspace_data(input_file, output_dir):
             on='CTUID',
             how='left'
         )
+        GS_capita_gdf['greenspace_per_capita'] = GS_capita_gdf['greenspace_per_capita'].fillna(0.0)
         GS_capita_gdf = gpd.GeoDataFrame(GS_capita_gdf, geometry='geometry', crs='EPSG:4326')
         greenspace_final_path = os.path.join(output_dir, "greenspace_per_capita.geojson")
         GS_capita_gdf.to_file(greenspace_final_path, driver="GeoJSON")
@@ -346,61 +349,51 @@ def clip_final_geojson_files(census_div_shapefile, cduid, base_dir, city_name):
     else:
         print(f"⚠ censustracts.geojson not found at: {censustracts_file}")
     print("Clipping completed!")
-def process_city_pipeline(city_name, base_dir, census, census_boundaries, census_div_shapefile, cduid):
-    import os
-    import glob
-    os.environ['OGR_GEOJSON_MAX_OBJ_SIZE'] = '0'
-    city_dir = os.path.join(base_dir, "raw-data", city_name)
-    output_dir = os.path.join(base_dir, "data", city_name)
-    os.makedirs(output_dir, exist_ok=True)
-    create_census_geojson(census, census_boundaries, output_dir)
-    red_band_list = glob.glob(os.path.join(city_dir, "landsat2_c2", "*_B4.TIF"))
-    nir_band_list = glob.glob(os.path.join(city_dir, "landsat2_c2", "*_B5.TIF"))
-    if not red_band_list or not nir_band_list:
-        raise FileNotFoundError("landsat Red or NIR band files not found in the expected directory.")
-    red_band = red_band_list[0]
-    nir_band = nir_band_list[0]
-    print(f"Found red band: {red_band}")
-    print(f"Found NIR band: {nir_band}")
-    ndvi_tiff = os.path.join(city_dir, "landsat2_c2", f"ndvi_{city_name}.tiff")
-    mask_tiff = os.path.join(city_dir, "landsat2_c2", f"ndvi_{city_name}_mask.tiff")
-    geojson_mask = os.path.join(city_dir, f"greenspace_ndvi_{city_name}.geojson")
-    clipped_geojson = os.path.join(output_dir, f"greenspace_{cduid}.geojson")
-    combined_geojson = os.path.join(city_dir, "greenspace_with_census.geojson")
-    capita_geojson = os.path.join(city_dir, "greenspace_capita.geojson")
-    print(f"Processing city: {city_name}")
-    scale_tiff(red_band)
-    scale_tiff(nir_band)
-    calculate_ndvi(red_band, nir_band, city=f"{city_name}.tiff")
-    otsu_ndvi_threshold(ndvi_tiff)
-    mask_to_geojson(mask_tiff)
-    clip_geojson_to_CD(geojson_mask, output_dir, census_div_shapefile, cduid=cduid)
-    combine_greenspace_with_census(clipped_geojson, city_dir)
-    process_greenspace_census_data(combined_geojson, output_dir)
-    process_greenspace_data(capita_geojson, output_dir)
-    clip_final_geojson_files(census_div_shapefile, cduid, base_dir, city_name)
-    generate_city_summary_stats(city_name, base_dir, cduid)
-    print(f"Pipeline completed for city: {city_name}")
 def generate_city_summary_stats(city_name, base_dir, cduid):
     import geopandas as gpd
     import pandas as pd
     import json
     import os
     output_dir = os.path.join(base_dir, "data", city_name)
+    census_file = os.path.join(output_dir, "censustracts.geojson")
+    if not os.path.exists(census_file):
+        raise FileNotFoundError(f"censustracts.geojson not found at: {census_file}")
+    census_gdf = gpd.read_file(census_file)
+    census_gdf = census_gdf.to_crs(epsg=32188)  # Use projected CRS for accurate area calculations
+    census_gdf['CTUID'] = census_gdf['CTUID'].astype(str)
+    census_gdf['actual_land_area_m2'] = census_gdf.geometry.area
+    total_land_area_m2 = census_gdf['actual_land_area_m2'].sum()
+    print(f"📏 Calculated land area from census tract geometries: {total_land_area_m2 / 1e6:.2f} km²")
     capita_file = os.path.join(base_dir, "raw-data", city_name, "greenspace_capita.geojson")
     if not os.path.exists(capita_file):
         raise FileNotFoundError(f"greenspace_capita.geojson not found at: {capita_file}")
     capita_gdf = gpd.read_file(capita_file)
-    capita_gdf = capita_gdf.to_crs(epsg=32188)  # Use projected CRS for accurate area calculations
+    capita_gdf = capita_gdf.to_crs(epsg=32188)
+    capita_gdf['CTUID'] = capita_gdf['CTUID'].astype(str)
     valid_tracts = capita_gdf[capita_gdf['pop21'] > 0].copy()
-    total_greenspace_m2 = capita_gdf['greenspace_area'].sum()
-    total_greenspace_km2 = total_greenspace_m2 / 1e6
     total_population = capita_gdf['pop21'].sum()
+    greenspace_file_clipped = os.path.join(output_dir, f"greenspace_clipped_{cduid}.geojson")
+    greenspace_file_plain = os.path.join(output_dir, f"greenspace_{cduid}.geojson")
+    if os.path.exists(greenspace_file_clipped):
+        greenspace_file = greenspace_file_clipped
+    elif os.path.exists(greenspace_file_plain):
+        greenspace_file = greenspace_file_plain
+    else:
+        print(f"Warning: Clipped greenspace file not found. Using capita file greenspace_area.")
+        total_greenspace_m2 = capita_gdf['greenspace_area'].sum()
+        total_greenspace_km2 = total_greenspace_m2 / 1e6
+    if os.path.exists(greenspace_file_clipped) or os.path.exists(greenspace_file_plain):
+        greenspace_gdf = gpd.read_file(greenspace_file)
+        greenspace_gdf = greenspace_gdf.to_crs(epsg=32188)
+        greenspace_gdf['area_m2'] = greenspace_gdf.geometry.area
+        total_greenspace_m2 = greenspace_gdf['area_m2'].sum()
+        total_greenspace_km2 = total_greenspace_m2 / 1e6
+        print(f"✓ Using clipped greenspace file: {os.path.basename(greenspace_file)}")
+        print(f"🌳 Total greenspace area: {total_greenspace_km2:.2f} km²")
     if len(valid_tracts) > 0 and total_population > 0:
         avg_greenspace_per_capita = total_greenspace_m2 / total_population
     else:
         avg_greenspace_per_capita = 0
-    total_land_area_m2 = capita_gdf['LANDAREA'].sum()
     greenspace_percentage = (total_greenspace_m2 / total_land_area_m2) * 100 if total_land_area_m2 > 0 else 0
     summary_stats = {
         "city_name": city_name,
@@ -410,7 +403,7 @@ def generate_city_summary_stats(city_name, base_dir, cduid):
         "total_population": int(total_population),
         "greenspace_percentage": round(greenspace_percentage, 2),
         "total_land_area_km2": round(total_land_area_m2 / 1e6, 2),
-        "number_of_census_tracts": len(capita_gdf),
+        "number_of_census_tracts": len(census_gdf),
         "tracts_with_population": len(valid_tracts)
     }
     output_file = os.path.join(output_dir, "summary_stats.json")
@@ -421,6 +414,7 @@ def generate_city_summary_stats(city_name, base_dir, cduid):
     print(f"  - Average greenspace per capita: {summary_stats['average_greenspace_per_capita_m2']} m²/person")
     print(f"  - Total greenspace area: {summary_stats['total_greenspace_area_km2']} km²")
     print(f"  - Total population: {summary_stats['total_population']:,}")
+    print(f"  - Total land area: {summary_stats['total_land_area_km2']} km²")
     print(f"  - Greenspace percentage: {summary_stats['greenspace_percentage']}%")
     return summary_stats
 def generate_all_cities_summary(base_dir, cities_list):
@@ -443,3 +437,139 @@ def generate_all_cities_summary(base_dir, cities_list):
     print(f"\n✓ Combined summary saved to: {output_file}")
     print(f"  Total cities processed: {len(all_cities_data)}")
     return all_cities_data
+def smooth_census_tract_values_proximity(city_name, base_dir, cduid, proximity_distance=300):
+    import geopandas as gpd
+    import pandas as pd
+    import numpy as np
+    import os
+    print(f"\n{'='*60}")
+    print(f"🌳 Creating accessibility-based greenspace map for {city_name.upper()}")
+    print(f"   Proximity distance: {proximity_distance}m")
+    print(f"{'='*60}\n")
+    capita_file = os.path.join(base_dir, "raw-data", city_name, "greenspace_capita.geojson")
+    greenspace_file_clipped = os.path.join(base_dir, "data", city_name, f"greenspace_clipped_{cduid}.geojson")
+    greenspace_file_plain = os.path.join(base_dir, "data", city_name, f"greenspace_{cduid}.geojson")
+    if os.path.exists(greenspace_file_clipped):
+        greenspace_file = greenspace_file_clipped
+    elif os.path.exists(greenspace_file_plain):
+        greenspace_file = greenspace_file_plain
+    else:
+        raise FileNotFoundError(f"Greenspace file not found at:\n  {greenspace_file_clipped}\n  {greenspace_file_plain}")
+    census_file = os.path.join(base_dir, "data", city_name, "censustracts.geojson")
+    output_file = os.path.join(base_dir, "data", city_name, "greenspace_per_capita_smoothed.geojson")
+    print(f"Using greenspace file: {greenspace_file}")
+    print("📂 Loading census tract data...")
+    census_gdf = gpd.read_file(census_file)
+    census_gdf = census_gdf.to_crs(epsg=32188)  # Projected CRS
+    census_gdf['CTUID'] = census_gdf['CTUID'].astype(str)
+    capita_gdf = gpd.read_file(capita_file)
+    capita_gdf = capita_gdf.to_crs(epsg=32188)
+    capita_gdf['CTUID'] = capita_gdf['CTUID'].astype(str)
+    capita_lookup = capita_gdf.set_index('CTUID')[['greenspace_area', 'pop21']].to_dict('index')
+    own_greenspace_series = census_gdf['CTUID'].map(
+        lambda x: capita_lookup.get(x, {}).get('greenspace_area', 0)
+    )
+    census_gdf['own_greenspace'] = pd.to_numeric(own_greenspace_series, errors='coerce').fillna(0)
+    population_series = census_gdf['CTUID'].map(
+        lambda x: capita_lookup.get(x, {}).get('pop21', np.nan)
+    )
+    census_gdf['population'] = pd.to_numeric(population_series, errors='coerce')
+    if 'pop21' in census_gdf.columns:
+        census_pop = pd.to_numeric(census_gdf['pop21'], errors='coerce')
+    else:
+        census_pop = pd.Series(np.nan, index=census_gdf.index)
+    missing_pop_mask = census_gdf['population'].isna() | (census_gdf['population'] <= 0)
+    census_gdf.loc[missing_pop_mask, 'population'] = census_pop[missing_pop_mask]
+    census_gdf['population'] = census_gdf['population'].fillna(0)
+    if missing_pop_mask.any():
+        print(f"   Filled population for {(missing_pop_mask).sum()} tracts using census fallback")
+    zero_pop_cts = int((census_gdf['population'] <= 0).sum())
+    print(f"   Loaded {len(census_gdf)} census tracts")
+    print(f"   Original greenspace range: {census_gdf['own_greenspace'].min():.0f} - {census_gdf['own_greenspace'].max():.0f} m²")
+    print(f"   Tracts with zero population after fallback: {zero_pop_cts}")
+    print(f"📂 Loading greenspace polygons...")
+    greenspace_gdf = gpd.read_file(greenspace_file)
+    greenspace_gdf = greenspace_gdf.to_crs(epsg=32188)
+    greenspace_gdf['area_m2'] = greenspace_gdf.geometry.area
+    print(f"   Loaded {len(greenspace_gdf)} greenspace polygons")
+    print(f"🌿 Calculating accessible greenspace within {proximity_distance}m...")
+    accessible_greenspace = []
+    for idx, tract_row in census_gdf.iterrows():
+        tract_geom = tract_row.geometry
+        search_buffer = tract_geom.buffer(proximity_distance)
+        nearby_greenspace = greenspace_gdf[greenspace_gdf.intersects(search_buffer)]
+        total_accessible = 0
+        for gs_idx, gs_row in nearby_greenspace.iterrows():
+            distance = tract_geom.centroid.distance(gs_row.geometry.centroid)
+            if distance <= proximity_distance:
+                weight = 1 - (distance / proximity_distance)
+                total_accessible += gs_row['area_m2'] * weight
+        accessible_greenspace.append(total_accessible)
+        if (idx + 1) % 100 == 0:
+            print(f"   Processed {idx + 1}/{len(census_gdf)} tracts...")
+    census_gdf['accessible_greenspace'] = accessible_greenspace
+    valid_pop = census_gdf['population'] > 0
+    census_gdf['greenspace_per_capita'] = 0.0
+    census_gdf.loc[valid_pop, 'greenspace_per_capita'] = (
+        (census_gdf.loc[valid_pop, 'own_greenspace'] + census_gdf.loc[valid_pop, 'accessible_greenspace']) /
+        census_gdf.loc[valid_pop, 'population']
+    )
+    census_gdf.loc[~valid_pop, 'greenspace_per_capita'] = -1.0
+    print(f"\n📊 Results:")
+    print(f"   Accessible greenspace range: {census_gdf['accessible_greenspace'].min():.0f} - {census_gdf['accessible_greenspace'].max():.0f} m²")
+    print(f"   Tracts with zero own greenspace but nearby access: {((census_gdf['own_greenspace'] == 0) & (census_gdf['accessible_greenspace'] > 0) & valid_pop).sum()}")
+    print(f"   Final per capita range: {census_gdf[valid_pop]['greenspace_per_capita'].min():.2f} - {census_gdf[valid_pop]['greenspace_per_capita'].max():.2f} m²/person")
+    print(f"   Average per capita: {census_gdf[valid_pop]['greenspace_per_capita'].mean():.2f} m²/person")
+    output_gdf = census_gdf[['CTUID', 'greenspace_per_capita', 'geometry']].copy()
+    output_gdf = output_gdf.to_crs(epsg=4326)
+    print(f"\n💾 Saving to: {output_file}")
+    output_gdf.to_file(output_file, driver="GeoJSON")
+    print(f"✅ Complete! Output has {len(output_gdf)} census tracts")
+    print(f"{'='*60}\n")
+    return output_file
+def process_city_pipeline(city_name, base_dir, census, census_boundaries, census_div_shapefile, cduid):
+    import os
+    import glob
+    os.environ['OGR_GEOJSON_MAX_OBJ_SIZE'] = '0'
+    city_dir = os.path.join(base_dir, "raw-data", city_name)
+    output_dir = os.path.join(base_dir, "data", city_name)
+    os.makedirs(output_dir, exist_ok=True)
+    create_census_geojson(census, census_boundaries, output_dir)
+    red_band_list = glob.glob(os.path.join(city_dir, "landsat2_c2", "*_B4.TIF"))
+    nir_band_list = glob.glob(os.path.join(city_dir, "landsat2_c2", "*_B5.TIF"))
+    if not red_band_list or not nir_band_list:
+        raise FileNotFoundError("landsat Red or NIR band files not found in the expected directory.")
+    red_band = red_band_list[0]
+    nir_band = nir_band_list[0]
+    print(f"Found red band: {red_band}")
+    print(f"Found NIR band: {nir_band}")
+    ndvi_tiff = os.path.join(city_dir, "landsat2_c2", f"ndvi_{city_name}.tiff")
+    mask_tiff = os.path.join(city_dir, "landsat2_c2", f"ndvi_{city_name}_mask.tiff")
+    geojson_mask = os.path.join(city_dir, f"greenspace_ndvi_{city_name}.geojson")
+    clipped_geojson = os.path.join(output_dir, f"greenspace_clipped_{cduid}.geojson")
+    combined_geojson = os.path.join(city_dir, "greenspace_with_census.geojson")
+    capita_geojson = os.path.join(city_dir, "greenspace_capita.geojson")
+    print(f"Processing city: {city_name}")
+    scale_tiff(red_band)
+    scale_tiff(nir_band)
+    calculate_ndvi(red_band, nir_band, city=f"{city_name}.tiff")
+    otsu_ndvi_threshold(ndvi_tiff)
+    mask_to_geojson(mask_tiff)
+    clip_geojson_to_CD(geojson_mask, output_dir, census_div_shapefile, cduid=cduid)
+    combine_greenspace_with_census(clipped_geojson, city_dir)
+    process_greenspace_census_data(combined_geojson, output_dir)
+    process_greenspace_data(capita_geojson, output_dir)
+    clip_final_geojson_files(census_div_shapefile, cduid, base_dir, city_name)
+    generate_city_summary_stats(city_name, base_dir, cduid)
+    try:
+        print(f"\n{'='*60}")
+        print(f"Step 11: Creating proximity-based accessibility map...")
+        print(f"{'='*60}")
+        smooth_census_tract_values_proximity(city_name, base_dir, cduid, proximity_distance=300)
+    except Exception as e:
+        print(f"\n❌ ERROR in Step 11 (smooth_census_tract_values_proximity):")
+        print(f"   {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
+        print(f"\n⚠️ Pipeline continuing despite smoothing failure...")
+    print(f"Pipeline completed for city: {city_name}")

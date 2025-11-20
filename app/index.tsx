@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Leaf, MapPin, Trees, Globe, ArrowRight } from 'lucide-react-native';
+import { Leaf, MapPin, Trees, Globe, ArrowRight, Info } from 'lucide-react-native';
 
 export default function LandingScreen() {
   const insets = useSafeAreaInsets();
@@ -22,6 +22,14 @@ export default function LandingScreen() {
 
   return (
     <View style={styles.container}>
+      <TouchableOpacity 
+        style={[styles.infoButton, { top: insets.top + 10 }]}
+        onPress={() => router.push('/info')}
+        activeOpacity={0.7}
+      >
+        <Info size={24} color="#2E7D32" />
+      </TouchableOpacity>
+      
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 32 }]}
@@ -66,7 +74,7 @@ export default function LandingScreen() {
               </View>
               <Text style={styles.featureTitle}>Environmental Data</Text>
               <Text style={styles.featureDescription}>
-                coming soon:Access comprehensive statistics and insights about urban green spaces
+                Access comprehensive statistics and insights about urban green spaces
               </Text>
             </View>
 
@@ -134,6 +142,22 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F5F9F5',
+  },
+  infoButton: {
+    position: 'absolute',
+    right: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 4,
+    zIndex: 1000,
   },
   scrollView: {
     flex: 1,
@@ -247,7 +271,7 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   exploreButton: {
-    backgroundColor: '#2E7D32',
+    backgroundColor: '#0cc916ff',
     paddingVertical: 16,
     paddingHorizontal: 12,
     borderRadius: 16,
@@ -265,7 +289,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   compareButton: {
-    backgroundColor: '#1B5E20',
+    backgroundColor: '#0cc916ff',
     paddingVertical: 16,
     paddingHorizontal: 12,
     borderRadius: 16,
@@ -283,7 +307,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   statsContainer: {
-    backgroundColor: '#2E7D32',
+    backgroundColor: '#1c662eff',
     padding: 24,
     borderRadius: 20,
     marginBottom: 32,

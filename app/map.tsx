@@ -10,8 +10,8 @@ import {
   Animated,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Stack } from 'expo-router';
-import { Leaf, MapPin, Trees, Users, ChevronDown, ChevronUp, Layers } from 'lucide-react-native';
+import { Stack, useRouter } from 'expo-router';
+import { Leaf, MapPin, Trees, Users, ChevronDown, ChevronUp, Layers, Info, Map } from 'lucide-react-native';
 import { CITIES, City } from '@/constants/cities';
 import { Asset } from 'expo-asset';
 
@@ -25,12 +25,15 @@ const GREEN_SPACE_COLORS = {
   reserve: '#1B5E20',
 };
 
+type BaseMapType = 'streets' | 'satellite' | 'topo' | 'dark';
+
 type LeafletMapProps = {
   city: City;
   greenSpaceColors: Record<string, string>;
   activeLayers: Set<string>;
   onBreaksCalculated?: (breaks: number[]) => void;
   colorblindMode?: boolean;
+  baseMap?: BaseMapType;
 };
 
 //-----------------------------
@@ -75,10 +78,11 @@ function getColor(value: number | null | undefined, breaks: number[], colorblind
   }
 }
 
-function LeafletMap({ city, activeLayers, onBreaksCalculated, colorblindMode = false }: LeafletMapProps) {
+function LeafletMap({ city, activeLayers, onBreaksCalculated, colorblindMode = false, baseMap = 'streets' }: LeafletMapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const layersRef = useRef<Record<string, any>>({}); // Store references to layers
+  const tileLayerRef = useRef<any>(null);
 
   useEffect(() => {
     if (Platform.OS !== 'web' || !mapRef.current) return;
@@ -94,6 +98,7 @@ function LeafletMap({ city, activeLayers, onBreaksCalculated, colorblindMode = f
       
       // Clear layer references
       layersRef.current = {};
+      tileLayerRef.current = null;
 
       if (!mapRef.current) return;
 
@@ -103,11 +108,35 @@ function LeafletMap({ city, activeLayers, onBreaksCalculated, colorblindMode = f
         12
       );
 
-      // Add OpenStreetMap tile layer
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap contributors',
-        maxZoom: 18,
-      }).addTo(map);
+      // Add base map tile layer based on selection
+      const getTileLayer = () => {
+        switch (baseMap) {
+          case 'satellite':
+            return L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+              attribution: 'Tiles © Esri',
+              maxZoom: 18,
+            });
+          case 'topo':
+            return L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+              attribution: '© OpenTopoMap contributors',
+              maxZoom: 17,
+            });
+          case 'dark':
+            return L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+              attribution: '© OpenStreetMap contributors © CARTO',
+              maxZoom: 19,
+            });
+          case 'streets':
+          default:
+            return L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+              attribution: '© OpenStreetMap contributors',
+              maxZoom: 18,
+            });
+        }
+      };
+      
+      tileLayerRef.current = getTileLayer();
+      tileLayerRef.current.addTo(map);
 
       // Fetch and store the greenspace GeoJSON layer
       if (city.geojsonFiles?.greenspace) {
@@ -253,8 +282,56 @@ function LeafletMap({ city, activeLayers, onBreaksCalculated, colorblindMode = f
         mapInstanceRef.current = null;
       }
       layersRef.current = {};
+      tileLayerRef.current = null;
     };
   }, [city, colorblindMode]);
+
+  // Update tile layer when baseMap changes
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !mapInstanceRef.current) return;
+
+    const updateTileLayer = async () => {
+      const L = await import('leaflet');
+      const map = mapInstanceRef.current;
+
+      // Remove old tile layer
+      if (tileLayerRef.current && map.hasLayer(tileLayerRef.current)) {
+        map.removeLayer(tileLayerRef.current);
+      }
+
+      // Add new tile layer
+      const getTileLayer = () => {
+        switch (baseMap) {
+          case 'satellite':
+            return L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+              attribution: 'Tiles © Esri',
+              maxZoom: 18,
+            });
+          case 'topo':
+            return L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+              attribution: '© OpenTopoMap contributors',
+              maxZoom: 17,
+            });
+          case 'dark':
+            return L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+              attribution: '© OpenStreetMap contributors © CARTO',
+              maxZoom: 19,
+            });
+          case 'streets':
+          default:
+            return L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+              attribution: '© OpenStreetMap contributors',
+              maxZoom: 18,
+            });
+        }
+      };
+      
+      tileLayerRef.current = getTileLayer();
+      tileLayerRef.current.addTo(map);
+    };
+
+    updateTileLayer();
+  }, [baseMap]);
 
 
  // Add/remove layers based on activeLayers state
@@ -300,13 +377,17 @@ const CITY_EXPANDED_HEIGHT = 150; // Reduced from 180
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const [selectedCity, setSelectedCity] = useState<City>(CITIES[0]);
+  const [citySummary, setCitySummary] = useState<any | null>(null);
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
   const [cityDrawerExpanded, setCityDrawerExpanded] = useState<boolean>(false);
   const [activeLayers, setActiveLayers] = useState<Set<string>>(new Set(['greenspacePerCapita'])); // Changed default layer
   const [cityBreaks, setCityBreaks] = useState<number[]>([]);
   const [legendExpanded, setLegendExpanded] = useState<boolean>(true);
   const [colorblindMode, setColorblindMode] = useState<boolean>(false);
+  const [baseMap, setBaseMap] = useState<BaseMapType>('streets');
+  const [showBaseMapSelector, setShowBaseMapSelector] = useState<boolean>(false);
   const animatedHeight = useRef(new Animated.Value(COLLAPSED_HEIGHT)).current;
   const animatedCityHeight = useRef(new Animated.Value(CITY_COLLAPSED_HEIGHT)).current;
   
@@ -328,6 +409,27 @@ export default function HomeScreen() {
     
     return () => subscription?.remove();
   }, []);
+
+  // Fetch per-city summary JSON (summary_stats.json) for selected city
+  useEffect(() => {
+    let cancelled = false;
+    const fetchSummary = async () => {
+      try {
+        const cityKey = selectedCity.id.toLowerCase();
+        const url = `https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/data/${cityKey}/summary_stats.json`;
+        const resp = await fetch(url);
+        if (!resp.ok) throw new Error(`Failed to fetch summary for ${selectedCity.name}: ${resp.status}`);
+        const json = await resp.json();
+        if (!cancelled) setCitySummary(json);
+      } catch (err) {
+        console.warn('Could not load city summary:', err);
+        if (!cancelled) setCitySummary(null);
+      }
+    };
+
+    fetchSummary();
+    return () => { cancelled = true; };
+  }, [selectedCity]);
 
   const toggleSheet = () => {
     const toValue = isExpanded ? COLLAPSED_HEIGHT : EXPANDED_HEIGHT;
@@ -375,10 +477,42 @@ export default function HomeScreen() {
           headerTitleStyle: {
             fontWeight: '700' as const,
           },
+          headerRight: () => (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginRight: 12 }}>
+              <TouchableOpacity 
+                onPress={() => setShowBaseMapSelector(!showBaseMapSelector)} 
+                style={styles.headerButton}
+                activeOpacity={0.7}
+              >
+                <Map size={20} color="#2E7D32" />
+              </TouchableOpacity>
+              <TouchableOpacity 
+                onPress={() => setShowLayerSelector(!showLayerSelector)} 
+                style={styles.headerButton}
+                activeOpacity={0.7}
+              >
+                <Layers size={20} color="#2E7D32" />
+              </TouchableOpacity>
+              <TouchableOpacity 
+                onPress={() => setColorblindMode(!colorblindMode)} 
+                style={styles.headerButton}
+                activeOpacity={0.7}
+              >
+                <Text style={{ fontSize: 18 }}>{colorblindMode ? '👁️' : '🎨'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                onPress={() => router.push('/info')} 
+                style={styles.headerButton}
+                activeOpacity={0.7}
+              >
+                <Info size={20} color="#2E7D32" />
+              </TouchableOpacity>
+            </View>
+          ),
         }}
       />
 
-      {isSmartphone && !cityDrawerExpanded ? (
+      {!cityDrawerExpanded ? (
         <TouchableOpacity 
           style={styles.cityButtonCompact}
           onPress={toggleCityDrawer}
@@ -440,6 +574,7 @@ export default function HomeScreen() {
             activeLayers={activeLayers}
             onBreaksCalculated={setCityBreaks}
             colorblindMode={colorblindMode}
+            baseMap={baseMap}
           />
         ) : (
           <View style={styles.nativeMapPlaceholder}>
@@ -450,23 +585,7 @@ export default function HomeScreen() {
           </View>
         )}
         
-        <TouchableOpacity 
-          style={styles.layerButton}
-          onPress={() => setShowLayerSelector(!showLayerSelector)}
-          activeOpacity={0.8}
-        >
-          <Layers size={20} color="#FFFFFF" />
-        </TouchableOpacity>
 
-        <TouchableOpacity 
-          style={styles.colorblindButton}
-          onPress={() => setColorblindMode(!colorblindMode)}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.colorblindButtonText}>
-            {colorblindMode ? '👁️' : '🎨'}
-          </Text>
-        </TouchableOpacity>
 
         {activeLayers.has('greenspacePerCapita') && cityBreaks.length > 0 && (
           <View style={[
@@ -525,6 +644,92 @@ export default function HomeScreen() {
                 </View>
               </View>
             )}
+          </View>
+        )}
+
+         {showBaseMapSelector && (
+          <View style={[styles.baseMapSelector, { maxHeight: windowDimensions.height - 150 }]}>
+            <Text style={styles.layerSelectorTitle}>Base Map</Text>
+            <ScrollView 
+              style={styles.layerScrollView}
+              showsVerticalScrollIndicator={false}
+            >
+              <TouchableOpacity 
+                style={styles.layerOption}
+                onPress={() => setBaseMap('streets')}
+                activeOpacity={0.7}
+              >
+                <View style={[
+                  styles.layerCheckbox,
+                  baseMap === 'streets' && styles.layerCheckboxActive
+                ]}>
+                  {baseMap === 'streets' && (
+                    <View style={styles.layerCheckboxInner} />
+                  )}
+                </View>
+                <View style={styles.layerOptionContent}>
+                  <Text style={styles.layerOptionTitle}>Streets</Text>
+                  <Text style={styles.layerOptionDescription}>Standard OpenStreetMap view</Text>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={styles.layerOption}
+                onPress={() => setBaseMap('satellite')}
+                activeOpacity={0.7}
+              >
+                <View style={[
+                  styles.layerCheckbox,
+                  baseMap === 'satellite' && styles.layerCheckboxActive
+                ]}>
+                  {baseMap === 'satellite' && (
+                    <View style={styles.layerCheckboxInner} />
+                  )}
+                </View>
+                <View style={styles.layerOptionContent}>
+                  <Text style={styles.layerOptionTitle}>Satellite</Text>
+                  <Text style={styles.layerOptionDescription}>Aerial imagery from Esri</Text>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={styles.layerOption}
+                onPress={() => setBaseMap('topo')}
+                activeOpacity={0.7}
+              >
+                <View style={[
+                  styles.layerCheckbox,
+                  baseMap === 'topo' && styles.layerCheckboxActive
+                ]}>
+                  {baseMap === 'topo' && (
+                    <View style={styles.layerCheckboxInner} />
+                  )}
+                </View>
+                <View style={styles.layerOptionContent}>
+                  <Text style={styles.layerOptionTitle}>Topographic</Text>
+                  <Text style={styles.layerOptionDescription}>Terrain and elevation details</Text>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={styles.layerOption}
+                onPress={() => setBaseMap('dark')}
+                activeOpacity={0.7}
+              >
+                <View style={[
+                  styles.layerCheckbox,
+                  baseMap === 'dark' && styles.layerCheckboxActive
+                ]}>
+                  {baseMap === 'dark' && (
+                    <View style={styles.layerCheckboxInner} />
+                  )}
+                </View>
+                <View style={styles.layerOptionContent}>
+                  <Text style={styles.layerOptionTitle}>Dark</Text>
+                  <Text style={styles.layerOptionDescription}>Dark theme map by CARTO</Text>
+                </View>
+              </TouchableOpacity>
+            </ScrollView>
           </View>
         )}
 
@@ -596,7 +801,7 @@ export default function HomeScreen() {
         )}
       </View>
 
-      {isSmartphone && !isExpanded ? (
+      {!isExpanded ? (
         <TouchableOpacity 
           style={[styles.factsButtonCompact, { bottom: insets.bottom + 20 }]}
           onPress={toggleSheet}
@@ -634,24 +839,67 @@ export default function HomeScreen() {
             showsVerticalScrollIndicator={false}
           >
         <View style={styles.factsGrid}>
+          {/* Greenspace coverage */}
           <View style={styles.factCard}>
             <View style={styles.factIconContainer}>
               <Leaf size={24} color="#2E7D32" />
             </View>
             <Text style={styles.factValue}>
-              {selectedCity.greenSpacePercentage}%
+              {citySummary?.greenspace_percentage !== undefined
+                ? `${Number(citySummary.greenspace_percentage).toFixed(1)}%`
+                : `${selectedCity.greenSpacePercentage}%`}
             </Text>
             <Text style={styles.factLabel}>Green Space Coverage</Text>
           </View>
 
+          {/* Per-capita greenspace (m²) */}
           <View style={styles.factCard}>
             <View style={styles.factIconContainer}>
               <Users size={24} color="#2E7D32" />
             </View>
             <Text style={styles.factValue}>
-              {(selectedCity.greenSpacePercentage * selectedCity.totalArea / selectedCity.population * 1000000).toFixed(0)} m²
+              {(() => {
+                const avg = citySummary?.average_greenspace_per_capita_m2;
+                const totalGreenKm2 = citySummary?.total_greenspace_area_km2;
+                const pop = citySummary?.total_population ?? selectedCity.population;
+                if (avg !== undefined && avg !== null) return `${Number(avg).toFixed(0)} m²`;
+                if (totalGreenKm2 !== undefined && pop) return `${Math.round((totalGreenKm2 * 1e6) / pop)} m²`;
+                // fallback to older heuristic if summary missing
+                try {
+                  const fallback = (selectedCity.greenSpacePercentage * selectedCity.totalArea) / selectedCity.population * 1000000;
+                  return `${Math.round(fallback)} m²`;
+                } catch (e) {
+                  return 'N/A';
+                }
+              })()}
             </Text>
             <Text style={styles.factLabel}>Per Capita</Text>
+          </View>
+
+          {/* Total area (km²) */}
+          <View style={styles.factCard}>
+            <View style={styles.factIconContainer}>
+              <MapPin size={24} color="#2E7D32" />
+            </View>
+            <Text style={styles.factValue}>
+              {citySummary?.total_land_area_km2 !== undefined
+                ? `${Number(citySummary.total_land_area_km2).toFixed(1)} km²`
+                : `${selectedCity.totalArea} km²`}
+            </Text>
+            <Text style={styles.factLabel}>Total Area</Text>
+          </View>
+
+          {/* Population */}
+          <View style={styles.factCard}>
+            <View style={styles.factIconContainer}>
+              <Users size={20} color="#2E7D32" />
+            </View>
+            <Text style={styles.factValue}>
+              {citySummary?.total_population !== undefined
+                ? String(citySummary.total_population).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+                : String(selectedCity.population).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+            </Text>
+            <Text style={styles.factLabel}>Population</Text>
           </View>
         </View>
 
@@ -680,6 +928,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F5F9F5',
   },
+  
   citySelector: {
     backgroundColor: '#FFFFFF',
     paddingVertical: 16,
@@ -851,22 +1100,28 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#558B2F',
   },
-  layerButton: {
-    position: 'absolute',
-    top: 65, // moved up 75 from previous 80
-    right: 20,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#2E7D32',
+  headerButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#E8F5E9',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  baseMapSelector: {
+    position: 'absolute',
+    top: 120,
+    right: 340, // Position to the left of layer selector
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    minWidth: 280,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
-    zIndex: 1000, // Move zIndex here
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 8,
+    zIndex: 10000,
   },
   layerSelector: {
     position: 'absolute',
@@ -952,7 +1207,7 @@ const styles = StyleSheet.create({
   legend: {
     position: 'absolute',
     bottom: 75, // Adjusted from 20 to move it up
-    left: '50%',
+    left: '7.5%',
     transform: [{ translateX: -120 }],
     backgroundColor: '#ffffffc5',
     paddingHorizontal: 14,
@@ -989,26 +1244,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#DDD',
   },
-  colorblindButton: {
-    position: 'absolute',
-    bottom: 90,
-    right: 20,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#2E7D32',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
-    zIndex: 1000,
-  },
-  colorblindButtonText: {
-    fontSize: 20,
-  },
+
   cityButtonCompact: {
     position: 'absolute',
     top: 20,

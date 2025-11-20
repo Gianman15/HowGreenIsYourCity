@@ -1,11 +1,11 @@
 {
   "city_name": "ottawa",
-  "cduid": "3506",
+  "cduid": "5915",
   "average_greenspace_per_capita_m2": 2091.88,
   "total_greenspace_area_km2": 2244.45,
   "total_population": 1072936,
-  "greenspace_percentage": 55.92,
-  "total_land_area_km2": 4013.4,
-  "number_of_census_tracts": 225,
+  "greenspace_percentage": 77.56,
+  "total_land_area_km2": 2893.87,
+  "number_of_census_tracts": 243,
   "tracts_with_population": 225
 }

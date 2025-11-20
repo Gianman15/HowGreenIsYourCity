@@ -5,6 +5,7 @@ import {
   Text,
   TouchableOpacity,
   ScrollView,
+  Linking,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -82,6 +83,9 @@ export default function InfoScreen() {
               </Text>
             </View>
           </View>
+          <Text style={styles.paragraph}>
+            {'\n'}Do you want to learn more about how these per capita values can impact mental health? Feel free to read peer reviewed literature <Text style={{ color: '#1E88E5', textDecorationLine: 'underline' }} onPress={() => Linking.openURL('https://doi.org/10.1016/j.jenvp.2024.102468')}>here</Text>.
+          </Text>
         </View>
 
         {/* Census Tracts */}
@@ -117,6 +121,12 @@ export default function InfoScreen() {
           <Text style={styles.paragraph}>
             <Text style={styles.boldText}>Example:</Text> If a census tract has 100,000 m² of green space 
             and 5,000 residents, the per capita value is 20 m²/person.
+          </Text>
+          <Text style={styles.paragraph}>
+            <Text style={styles.boldText}>Adjusted Values:</Text> The per capita measurements shown in this 
+            app are adjusted to include green space within 300 meters of each census tract boundary. This 
+            provides a more realistic assessment of accessible green space, since residents often use parks 
+            and green areas that are just outside their immediate neighborhood boundaries.
           </Text>
           <Text style={styles.paragraph}>
             Higher per capita values indicate more accessible green space for residents. The World Health 

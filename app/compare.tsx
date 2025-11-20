@@ -12,7 +12,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
 import { Leaf, MapPin, Trees, Users, ChevronDown, ChevronUp, Layers, Info, Map } from 'lucide-react-native';
-import { CITIES, City } from '@/constants/cities';
+import { CITIES, City, loadCities } from '@/constants/cities';
 import { Asset } from 'expo-asset';
 
 
@@ -83,7 +83,10 @@ function LeafletMap({ city, activeLayers, sharedBreaks, colorblindMode = false, 
   const mapInstanceRef = useRef<any>(null);
   const layersRef = useRef<Record<string, any>>({}); // Store references to layers
   const geojsonDataRef = useRef<any>(null); // Store GeoJSON data for re-rendering
+  const geojsonDataSmoothRef = useRef<any>(null); // Store smoothed GeoJSON data
   const [dataLoaded, setDataLoaded] = useState(false);
+  const [dataSmoothLoaded, setDataSmoothLoaded] = useState(false);
+  const [layersReady, setLayersReady] = useState(0); // Counter to trigger visibility effect
   const tileLayerRef = useRef<any>(null);
 
   // Initialize map only once per city
@@ -91,6 +94,8 @@ function LeafletMap({ city, activeLayers, sharedBreaks, colorblindMode = false, 
     if (Platform.OS !== 'web' || !mapRef.current) return;
     
     setDataLoaded(false);
+    setDataSmoothLoaded(false);
+    setLayersReady(0);
 
     const initMap = async () => {
       const L = await import('leaflet');
@@ -113,6 +118,9 @@ function LeafletMap({ city, activeLayers, sharedBreaks, colorblindMode = false, 
         [city.coordinates.latitude, city.coordinates.longitude],
         12
       );
+
+      // Store reference immediately so other effects can safely access the map
+      mapInstanceRef.current = map;
 
       // Add base map tile layer based on selection
       const getTileLayer = () => {
@@ -201,10 +209,11 @@ function LeafletMap({ city, activeLayers, sharedBreaks, colorblindMode = false, 
             },
             onEachFeature: (feature, layer) => {
               const population = feature.properties.pop21;
+              const ctuid = feature.properties.CTUID;
               layer.bindPopup(
                 `<strong>Census Tract</strong><br/>Population: ${
                   population !== undefined ? population : 'N/A'
-                }`
+                }<br/>CTUID: ${ctuid || 'N/A'}`
               );
             },
           });
@@ -236,8 +245,24 @@ function LeafletMap({ city, activeLayers, sharedBreaks, colorblindMode = false, 
           console.error(`Error loading greenspace per capita GeoJSON data:`, error);
         }
       }
+
+      // Fetch and store the smoothed greenspace per capita GeoJSON data
+      if (city.geojsonFiles?.greenspacePerCapitaSmooth) {
+        try {
+          const response = await fetch(city.geojsonFiles.greenspacePerCapitaSmooth);
+          if (!response.ok) {
+            throw new Error(
+              `Failed to fetch ${city.geojsonFiles.greenspacePerCapitaSmooth}: ${response.status} ${response.statusText}`
+            );
+          }
+          const geojsonData = await response.json();
+          geojsonDataSmoothRef.current = geojsonData;
+          setDataSmoothLoaded(true);
+        } catch (error) {
+          console.error(`Error loading smoothed greenspace per capita GeoJSON data:`, error);
+        }
+      }
       
-      mapInstanceRef.current = map;
     };
 
     initMap();
@@ -250,8 +275,10 @@ function LeafletMap({ city, activeLayers, sharedBreaks, colorblindMode = false, 
       }
       layersRef.current = {};
       geojsonDataRef.current = null;
+      geojsonDataSmoothRef.current = null;
       tileLayerRef.current = null;
       setDataLoaded(false);
+      setDataSmoothLoaded(false);
     };
   }, [city]);
 
@@ -311,8 +338,12 @@ function LeafletMap({ city, activeLayers, sharedBreaks, colorblindMode = false, 
       const map = mapInstanceRef.current;
       
       // Remove existing layer if it exists
-      if (layersRef.current.greenspacePerCapita && map.hasLayer(layersRef.current.greenspacePerCapita)) {
-        map.removeLayer(layersRef.current.greenspacePerCapita);
+      if (layersRef.current.greenspacePerCapita) {
+        if (map.hasLayer(layersRef.current.greenspacePerCapita)) {
+          map.removeLayer(layersRef.current.greenspacePerCapita);
+        }
+        // Clear the old layer reference
+        delete layersRef.current.greenspacePerCapita;
       }
 
       // Use shared breaks if provided AND valid, otherwise calculate from this city's data
@@ -348,15 +379,83 @@ function LeafletMap({ city, activeLayers, sharedBreaks, colorblindMode = false, 
       });
 
       layersRef.current.greenspacePerCapita = greenspacePerCapitaLayer;
+      console.log('greenspacePerCapita layer created and stored in layersRef');
       
-      // Add to map if it's in the active layers
+      // Add to map immediately if it's in the active layers
       if (activeLayers.has('greenspacePerCapita')) {
         greenspacePerCapitaLayer.addTo(map);
+        console.log('greenspacePerCapita layer added to map on creation');
       }
+      
+      setLayersReady(prev => prev + 1); // Trigger visibility effect
     };
 
     updatePerCapitaLayer();
   }, [dataLoaded, sharedBreaks, colorblindMode, activeLayers]);
+
+  // Update smoothed greenspace per capita layer when breaks or colorblind mode changes
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !mapInstanceRef.current || !geojsonDataSmoothRef.current || !dataSmoothLoaded) return;
+
+    const updatePerCapitaSmoothLayer = async () => {
+      const L = await import('leaflet');
+      const map = mapInstanceRef.current;
+      
+      // Remove existing layer if it exists
+      if (layersRef.current.greenspacePerCapitaSmooth) {
+        if (map.hasLayer(layersRef.current.greenspacePerCapitaSmooth)) {
+          map.removeLayer(layersRef.current.greenspacePerCapitaSmooth);
+        }
+        // Clear the old layer reference
+        delete layersRef.current.greenspacePerCapitaSmooth;
+      }
+
+      // Use shared breaks if provided AND valid, otherwise calculate from this city's data
+      const breaks = (sharedBreaks && sharedBreaks.length > 0) 
+        ? sharedBreaks 
+        : getBreaks(geojsonDataSmoothRef.current.features, 'greenspace_per_capita', 7);
+      console.log('Using breaks for smoothed greenspace per capita:', breaks);
+
+      const greenspacePerCapitaSmoothLayer = L.geoJSON(geojsonDataSmoothRef.current, {
+        style: (feature) => {
+          const value = (feature!.properties as any).greenspace_per_capita;
+          return {
+            color: '#222',
+            weight: 1,
+            fillOpacity: 0.5,
+            fillColor: getColor(value, breaks, colorblindMode),
+          };
+        },
+        onEachFeature: (feature, layer) => {
+          const capita = (feature!.properties as any).greenspace_per_capita;
+          layer.on('click', function () {
+            layer.bindPopup(
+              `<strong>Accessible Greenspace (300m)</strong><br/>Value: ${
+                capita === -1
+                  ? 'no residents'
+                  : capita !== undefined && capita !== null
+                  ? capita.toFixed(2)
+                  : 'N/A'
+              } m²`
+            ).openPopup();
+          });
+        },
+      });
+
+      layersRef.current.greenspacePerCapitaSmooth = greenspacePerCapitaSmoothLayer;
+      console.log('greenspacePerCapitaSmooth layer created and stored in layersRef');
+      
+      // Add to map immediately if it's in the active layers
+      if (activeLayers.has('greenspacePerCapitaSmooth')) {
+        greenspacePerCapitaSmoothLayer.addTo(map);
+        console.log('greenspacePerCapitaSmooth layer added to map on creation');
+      }
+      
+      setLayersReady(prev => prev + 1); // Trigger visibility effect
+    };
+
+    updatePerCapitaSmoothLayer();
+  }, [dataSmoothLoaded, sharedBreaks, colorblindMode, activeLayers]);
 
 
  // Add/remove layers based on activeLayers state
@@ -365,6 +464,7 @@ function LeafletMap({ city, activeLayers, sharedBreaks, colorblindMode = false, 
 
   const map = mapInstanceRef.current;
 
+
   // Check each layer and add/remove accordingly
   Object.keys(layersRef.current).forEach((layerName) => {
     const layer = layersRef.current[layerName];
@@ -372,7 +472,10 @@ function LeafletMap({ city, activeLayers, sharedBreaks, colorblindMode = false, 
     if (activeLayers.has(layerName)) {
       // Add layer if it's active and not already on the map
       if (!map.hasLayer(layer)) {
+        console.log(`Adding layer to map: ${layerName}`);
         layer.addTo(map);
+      } else {
+        console.log(`Layer ${layerName} already on map`);
       }
 
       // Ensure the Census Tract layer is always on top
@@ -382,11 +485,12 @@ function LeafletMap({ city, activeLayers, sharedBreaks, colorblindMode = false, 
     } else {
       // Remove layer if it's inactive and currently on the map
       if (map.hasLayer(layer)) {
+        console.log(`Removing layer from map: ${layerName}`);
         map.removeLayer(layer);
       }
     }
   });
-}, [activeLayers]);
+}, [activeLayers, layersReady]);
 
   if (Platform.OS !== 'web') return null;
 
@@ -403,6 +507,7 @@ const CITY_EXPANDED_HEIGHT = 150; // Reduced from 180
 export default function CompareScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const [cities, setCities] = useState<City[]>(CITIES);
   const [leftCity, setLeftCity] = useState<City>(CITIES[0]);
   const [rightCity, setRightCity] = useState<City>(CITIES[1]);
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
@@ -435,12 +540,34 @@ export default function CompareScreen() {
     return () => subscription?.remove();
   }, []);
 
+  // Load cities with stats from GitHub
+  useEffect(() => {
+    loadCities().then(loadedCities => {
+      setCities(loadedCities);
+      // Update selected cities if they're currently showing placeholder data
+      if (leftCity.totalArea === 0) {
+        const updatedCity = loadedCities.find(c => c.id === leftCity.id);
+        if (updatedCity) setLeftCity(updatedCity);
+      }
+      if (rightCity.totalArea === 0) {
+        const updatedCity = loadedCities.find(c => c.id === rightCity.id);
+        if (updatedCity) setRightCity(updatedCity);
+      }
+    });
+  }, []);
+
   // Calculate shared breaks when cities change
   useEffect(() => {
     const fetchAndCalculateBreaks = async () => {
       try {
-        const leftUrl = leftCity.geojsonFiles?.greenspacePerCapita;
-        const rightUrl = rightCity.geojsonFiles?.greenspacePerCapita;
+        // Determine which URLs to use based on active layers
+        const useSmooth = activeLayers.has('greenspacePerCapitaSmooth');
+        const leftUrl = useSmooth 
+          ? leftCity.geojsonFiles?.greenspacePerCapitaSmooth 
+          : leftCity.geojsonFiles?.greenspacePerCapita;
+        const rightUrl = useSmooth 
+          ? rightCity.geojsonFiles?.greenspacePerCapitaSmooth 
+          : rightCity.geojsonFiles?.greenspacePerCapita;
         
         if (!leftUrl || !rightUrl) return;
 
@@ -467,7 +594,7 @@ export default function CompareScreen() {
     };
 
     fetchAndCalculateBreaks();
-  }, [leftCity, rightCity]);
+  }, [leftCity, rightCity, activeLayers]);
 
   const toggleSheet = () => {
     const toValue = isExpanded ? COLLAPSED_HEIGHT : EXPANDED_HEIGHT;
@@ -583,7 +710,7 @@ export default function CompareScreen() {
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.citySelectorContent}
             >
-              {CITIES.map((city) => (
+              {cities.map((city) => (
                 <TouchableOpacity
                   key={city.id}
                   style={[
@@ -620,7 +747,7 @@ export default function CompareScreen() {
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.citySelectorContent}
             >
-              {CITIES.map((city) => (
+              {cities.map((city) => (
                 <TouchableOpacity
                   key={city.id}
                   style={[
@@ -722,7 +849,7 @@ export default function CompareScreen() {
         
 
 
-        {activeLayers.has('greenspacePerCapita') && sharedBreaks.length > 0 && (
+        {(activeLayers.has('greenspacePerCapita') || activeLayers.has('greenspacePerCapitaSmooth')) && sharedBreaks.length > 0 && (
           <View style={[
             styles.legend,
             isSmartphone && { bottom: insets.bottom + 20, left: 220, transform: [] }
@@ -783,8 +910,15 @@ export default function CompareScreen() {
         )}
 
          {showBaseMapSelector && (
-          <View style={[styles.baseMapSelector, { maxHeight: windowDimensions.height - 150 }]}>
-            <Text style={styles.layerSelectorTitle}>Base Map</Text>
+          <View style={[
+            styles.baseMapSelector, 
+            { maxHeight: windowDimensions.height - 150 },
+            isSmartphone && { right: 20, top: 120 }
+          ]}>
+            <View style={styles.selectorTitleContainer}>
+              <Map size={18} color="#1B5E20" />
+              <Text style={styles.layerSelectorTitle}>Base Map</Text>
+            </View>
             <ScrollView 
               style={styles.layerScrollView}
               showsVerticalScrollIndicator={false}
@@ -870,7 +1004,10 @@ export default function CompareScreen() {
 
          {showLayerSelector && (
           <View style={[styles.layerSelector, { maxHeight: windowDimensions.height - 150 }]}>
-            <Text style={styles.layerSelectorTitle}>Map Layers</Text>
+            <View style={styles.selectorTitleContainer}>
+              <Layers size={18} color="#1B5E20" />
+              <Text style={styles.layerSelectorTitle}>Map Layers</Text>
+            </View>
             <ScrollView 
               style={styles.layerScrollView}
               showsVerticalScrollIndicator={false}
@@ -929,6 +1066,25 @@ export default function CompareScreen() {
                 <View style={styles.layerOptionContent}>
                   <Text style={styles.layerOptionTitle}>Greenspace per person</Text>
                   <Text style={styles.layerOptionDescription}>per capita greenspace allocation within a census tract</Text>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={styles.layerOption}
+                onPress={() => toggleLayer('greenspacePerCapitaSmooth')}
+                activeOpacity={0.7}
+              >
+                <View style={[
+                  styles.layerCheckbox,
+                  activeLayers.has('greenspacePerCapitaSmooth') && styles.layerCheckboxActive
+                ]}>
+                  {activeLayers.has('greenspacePerCapitaSmooth') && (
+                    <View style={styles.layerCheckboxInner} />
+                  )}
+                </View>
+                <View style={styles.layerOptionContent}>
+                  <Text style={styles.layerOptionTitle}>Accessible Greenspace (300m)</Text>
+                  <Text style={styles.layerOptionDescription}>Includes nearby greenspace within walking distance</Text>
                 </View>
               </TouchableOpacity>
             </ScrollView>
@@ -994,6 +1150,15 @@ export default function CompareScreen() {
               </Text>
               <Text style={styles.factLabel}>Per Capita</Text>
             </View>
+            <View style={styles.factCard}>
+              <View style={styles.factIconContainer}>
+                <MapPin size={18} color="#2E7D32" />
+              </View>
+              <Text style={styles.factValue} numberOfLines={2} adjustsFontSizeToFit>
+                {leftCity.totalArea.toFixed(1)} km²
+              </Text>
+              <Text style={styles.factLabel}>Total Area</Text>
+            </View>
           </View>
           
           <View style={styles.comparisonDivider} />
@@ -1017,6 +1182,15 @@ export default function CompareScreen() {
                 {(rightCity.greenSpacePercentage * rightCity.totalArea / rightCity.population * 1000000).toFixed(0)} m²
               </Text>
               <Text style={styles.factLabel}>Per Capita</Text>
+            </View>
+            <View style={styles.factCard}>
+              <View style={styles.factIconContainer}>
+                <MapPin size={18} color="#2E7D32" />
+              </View>
+              <Text style={styles.factValue} numberOfLines={2} adjustsFontSizeToFit>
+                {rightCity.totalArea.toFixed(1)} km²
+              </Text>
+              <Text style={styles.factLabel}>Total Area</Text>
             </View>
           </View>
         </View>
@@ -1217,7 +1391,7 @@ const styles = StyleSheet.create({
   baseMapSelector: {
     position: 'absolute',
     top: 120,
-    right: 340, // Position to the left of layer selector
+    right: 340, // Position to the left of layer selector on desktop
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 16,
@@ -1247,11 +1421,16 @@ const styles = StyleSheet.create({
   layerScrollView: {
     flex: 1,
   },
+  selectorTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 16,
+  },
   layerSelectorTitle: {
     fontSize: 16,
     fontWeight: '700' as const,
     color: '#1B5E20',
-    marginBottom: 16,
   },
   layerOption: {
     flexDirection: 'row',

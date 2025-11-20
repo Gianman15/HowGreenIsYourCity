@@ -379,4 +379,67 @@ def process_city_pipeline(city_name, base_dir, census, census_boundaries, census
     process_greenspace_census_data(combined_geojson, output_dir)
     process_greenspace_data(capita_geojson, output_dir)
     clip_final_geojson_files(census_div_shapefile, cduid, base_dir, city_name)
+    generate_city_summary_stats(city_name, base_dir, cduid)
     print(f"Pipeline completed for city: {city_name}")
+def generate_city_summary_stats(city_name, base_dir, cduid):
+    import geopandas as gpd
+    import pandas as pd
+    import json
+    import os
+    output_dir = os.path.join(base_dir, "data", city_name)
+    capita_file = os.path.join(base_dir, "raw-data", city_name, "greenspace_capita.geojson")
+    if not os.path.exists(capita_file):
+        raise FileNotFoundError(f"greenspace_capita.geojson not found at: {capita_file}")
+    capita_gdf = gpd.read_file(capita_file)
+    capita_gdf = capita_gdf.to_crs(epsg=32188)  # Use projected CRS for accurate area calculations
+    valid_tracts = capita_gdf[capita_gdf['pop21'] > 0].copy()
+    total_greenspace_m2 = capita_gdf['greenspace_area'].sum()
+    total_greenspace_km2 = total_greenspace_m2 / 1e6
+    total_population = capita_gdf['pop21'].sum()
+    if len(valid_tracts) > 0 and total_population > 0:
+        avg_greenspace_per_capita = total_greenspace_m2 / total_population
+    else:
+        avg_greenspace_per_capita = 0
+    total_land_area_m2 = capita_gdf['LANDAREA'].sum()
+    greenspace_percentage = (total_greenspace_m2 / total_land_area_m2) * 100 if total_land_area_m2 > 0 else 0
+    summary_stats = {
+        "city_name": city_name,
+        "cduid": cduid,
+        "average_greenspace_per_capita_m2": round(avg_greenspace_per_capita, 2),
+        "total_greenspace_area_km2": round(total_greenspace_km2, 2),
+        "total_population": int(total_population),
+        "greenspace_percentage": round(greenspace_percentage, 2),
+        "total_land_area_km2": round(total_land_area_m2 / 1e6, 2),
+        "number_of_census_tracts": len(capita_gdf),
+        "tracts_with_population": len(valid_tracts)
+    }
+    output_file = os.path.join(output_dir, "summary_stats.json")
+    with open(output_file, 'w') as f:
+        json.dump(summary_stats, f, indent=2)
+    print(f"✓ Summary statistics saved to: {output_file}")
+    print(f"\n📊 Summary for {city_name}:")
+    print(f"  - Average greenspace per capita: {summary_stats['average_greenspace_per_capita_m2']} m²/person")
+    print(f"  - Total greenspace area: {summary_stats['total_greenspace_area_km2']} km²")
+    print(f"  - Total population: {summary_stats['total_population']:,}")
+    print(f"  - Greenspace percentage: {summary_stats['greenspace_percentage']}%")
+    return summary_stats
+def generate_all_cities_summary(base_dir, cities_list):
+    import json
+    import os
+    all_cities_data = []
+    for city_info in cities_list:
+        city_name = city_info['city_name']
+        summary_file = os.path.join(base_dir, "data", city_name, "summary_stats.json")
+        if os.path.exists(summary_file):
+            with open(summary_file, 'r') as f:
+                city_data = json.load(f)
+                all_cities_data.append(city_data)
+                print(f"✓ Loaded summary for {city_name}")
+        else:
+            print(f"⚠ Summary file not found for {city_name} at: {summary_file}")
+    output_file = os.path.join(base_dir, "data", "all_cities_summary.json")
+    with open(output_file, 'w') as f:
+        json.dump(all_cities_data, f, indent=2)
+    print(f"\n✓ Combined summary saved to: {output_file}")
+    print(f"  Total cities processed: {len(all_cities_data)}")
+    return all_cities_data

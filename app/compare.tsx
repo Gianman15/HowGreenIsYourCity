@@ -34,6 +34,8 @@ type LeafletMapProps = {
   sharedBreaks?: number[];
   colorblindMode?: boolean;
   baseMap?: BaseMapType;
+  selectedBreakRange?: { min: number; max: number } | null;
+  onBreakRangeSelect?: (range: { min: number; max: number } | null) => void;
 };
 
 //-----------------------------
@@ -52,20 +54,47 @@ function getBreaks(features: any[], property: string, nClasses: number = 7): num
   return breaks;
 }
 
+// Helper function to get break range for a value
+function getBreakRangeIndex(value: number | null | undefined, breaks: number[]): number {
+  if (value == null || isNaN(value) || value === -1) return -1;
+  
+  for (let i = 0; i < breaks.length; i++) {
+    if (value <= breaks[i]) return i;
+  }
+  return breaks.length; // highest range
+}
+
+// Helper function to get break range bounds
+function getBreakRange(value: number | null | undefined, breaks: number[]): { min: number; max: number } | null {
+  if (value == null || isNaN(value) || value === -1) return null;
+  
+  const idx = getBreakRangeIndex(value, breaks);
+  if (idx === -1) return null;
+  
+  if (idx === 0) {
+    return { min: -Infinity, max: breaks[0] };
+  } else if (idx === breaks.length) {
+    return { min: breaks[breaks.length - 1], max: Infinity };
+  } else {
+    return { min: breaks[idx - 1], max: breaks[idx] };
+  }
+}
+
 // Helper function to get color based on value and breaks (matching webapp.js)
 function getColor(value: number | null | undefined, breaks: number[], colorblindMode: boolean = false): string {
   if (value == null || isNaN(value)) return colorblindMode ? '#440154' : '#660000ff'; // no greenspace
   if (value === -1) return '#999999'; // no residents
   
   if (colorblindMode) {
-    // Viridis color scheme (yellow-green-blue) - colorblind friendly
-    if (value <= breaks[0]) return '#440154'; // dark purple/blue (lowest)
-    if (value <= breaks[1]) return '#31688e';
-    if (value <= breaks[2]) return '#35b779';
-    if (value <= breaks[3]) return '#6ece58';
-    if (value <= breaks[4]) return '#b5de2b';
-    if (value <= breaks[5]) return '#fde724';
-    return '#ffff00'; // bright yellow (highest)
+    // ColorBrewer 'YlGnBu' 7-class (low → high) - colorblind-friendly
+    // low -> high: ['#c7e9b4', '#7fcdbb', '#41b6c4', '#1d91c0', '#225ea8', '#253494', '#081d58']
+    if (value <= breaks[0]) return '#c7e9b4';
+    if (value <= breaks[1]) return '#7fcdbb';
+    if (value <= breaks[2]) return '#41b6c4';
+    if (value <= breaks[3]) return '#1d91c0';
+    if (value <= breaks[4]) return '#225ea8';
+    if (value <= breaks[5]) return '#253494';
+    return '#081d58'; // highest
   } else {
     // Original color scheme
     if (value <= breaks[0]) return '#bf0000'; // very low
@@ -78,7 +107,7 @@ function getColor(value: number | null | undefined, breaks: number[], colorblind
   }
 }
 
-function LeafletMap({ city, activeLayers, sharedBreaks, colorblindMode = false, baseMap = 'streets' }: LeafletMapProps) {
+function LeafletMap({ city, activeLayers, sharedBreaks, colorblindMode = false, baseMap = 'streets', selectedBreakRange, onBreakRangeSelect }: LeafletMapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const layersRef = useRef<Record<string, any>>({}); // Store references to layers
@@ -88,6 +117,17 @@ function LeafletMap({ city, activeLayers, sharedBreaks, colorblindMode = false, 
   const [dataSmoothLoaded, setDataSmoothLoaded] = useState(false);
   const [layersReady, setLayersReady] = useState(0); // Counter to trigger visibility effect
   const tileLayerRef = useRef<any>(null);
+  const colorblindModeRef = useRef<boolean>(colorblindMode);
+  const selectedBreakRangeRef = useRef<{ min: number; max: number } | null>(selectedBreakRange || null);
+  
+  // Keep refs in sync with props
+  useEffect(() => {
+    colorblindModeRef.current = colorblindMode;
+  }, [colorblindMode]);
+  
+  useEffect(() => {
+    selectedBreakRangeRef.current = selectedBreakRange || null;
+  }, [selectedBreakRange]);
 
   // Initialize map only once per city
   useEffect(() => {
@@ -152,6 +192,17 @@ function LeafletMap({ city, activeLayers, sharedBreaks, colorblindMode = false, 
       tileLayerRef.current = getTileLayer();
       tileLayerRef.current.addTo(map);
 
+      // Add click handler to clear filter when clicking outside census tracts
+      map.on('click', (e: any) => {
+        // Check if click was on a layer by seeing if the event has a layer property
+        // If not on a layer, clear the filter
+        if (!e.originalEvent?.target?.closest('.leaflet-interactive')) {
+          if (onBreakRangeSelect) {
+            onBreakRangeSelect(null);
+          }
+        }
+      });
+
       // Fetch and store the greenspace GeoJSON layer
       if (city.geojsonFiles?.greenspace) {
         try {
@@ -202,11 +253,11 @@ function LeafletMap({ city, activeLayers, sharedBreaks, colorblindMode = false, 
           const geojsonData = await response.json();
 
           const censusLayer = L.geoJSON(geojsonData, {
-            style: {
-              color: '#5833ff', // Blue color for census tracts
+            style: () => ({
+              color: colorblindMode ? '#ffff00' : '#5833ff',
               weight: 2,
               fillOpacity: 0.0,
-            },
+            }),
             onEachFeature: (feature, layer) => {
               const population = feature.properties.pop21;
               const ctuid = feature.properties.CTUID;
@@ -215,6 +266,41 @@ function LeafletMap({ city, activeLayers, sharedBreaks, colorblindMode = false, 
                   population !== undefined ? population : 'N/A'
                 }<br/>CTUID: ${ctuid || 'N/A'}`
               );
+
+              // Store colorblindMode ref for hover handlers
+              (layer as any)._colorblindModeRef = colorblindModeRef;
+
+              // Highlight on hover
+              layer.on('mouseover', function (e: any) {
+                try {
+                  const target = e?.target as any;
+                  if (!target) return;
+                  target.setStyle?.({
+                    color: '#ffff00',
+                    weight: 3,
+                    fillOpacity: 0.25,
+                  });
+                  if (target.bringToFront) target.bringToFront();
+                } catch (err) {
+                  // ignore
+                }
+              });
+
+              // Restore style on mouseout
+              layer.on('mouseout', function (e: any) {
+                try {
+                  const target = e?.target as any;
+                  if (!target) return;
+                  const currentColorblindMode = (target as any)._colorblindModeRef ? (target as any)._colorblindModeRef.current : false;
+                  target.setStyle?.({
+                    color: currentColorblindMode ? '#ffff00' : '#5833ff',
+                    weight: 2,
+                    fillOpacity: 0.0,
+                  });
+                } catch (err) {
+                  // ignore
+                }
+              });
             },
           });
 
@@ -364,7 +450,21 @@ function LeafletMap({ city, activeLayers, sharedBreaks, colorblindMode = false, 
         },
         onEachFeature: (feature, layer) => {
           const capita = (feature!.properties as any).greenspace_per_capita;
+          
+          // Store breaks, colorblindMode ref, and selectedBreakRange ref for hover handlers
+          (layer as any)._breaksRef = breaks;
+          (layer as any)._colorblindModeRef = colorblindModeRef;
+          (layer as any)._selectedBreakRangeRef = selectedBreakRangeRef;
+          
           layer.on('click', function () {
+            // Calculate break range and notify parent
+            if (onBreakRangeSelect && capita !== -1 && capita != null && !isNaN(capita)) {
+              const range = getBreakRange(capita, breaks);
+              if (range) {
+                onBreakRangeSelect(range);
+              }
+            }
+            
             layer.bindPopup(
               `<strong>Greenspace Per Capita</strong><br/>Value: ${
                 capita === -1
@@ -374,6 +474,65 @@ function LeafletMap({ city, activeLayers, sharedBreaks, colorblindMode = false, 
                   : 'N/A'
               } m²`
             ).openPopup();
+          });
+          
+          // Hover highlight
+          layer.on('mouseover', function (e: any) {
+            try {
+              const target = e?.target as any;
+              if (!target) return;
+              
+              // Check if filtering is active and only highlight filtered-in tracts
+              const val = target?.feature?.properties?.greenspace_per_capita;
+              const currentRange = (target as any)._selectedBreakRangeRef ? (target as any)._selectedBreakRangeRef.current : null;
+              
+              if (currentRange && val != null && !isNaN(val) && val !== -1) {
+                const inRange = val > currentRange.min && val <= currentRange.max;
+                if (!inRange) {
+                  // Don't apply hover effect to filtered-out tracts
+                  return;
+                }
+              }
+              
+              target.setStyle?.({
+                color: '#ffff00',
+                weight: 2,
+                fillOpacity: 0.6,
+                fillColor: '#ffff66',
+              });
+              if (target.bringToFront) target.bringToFront();
+            } catch (err) {
+              // ignore
+            }
+          });
+          
+          layer.on('mouseout', function (e: any) {
+            try {
+              const target = e?.target as any;
+              if (!target) return;
+              const val = target?.feature?.properties?.greenspace_per_capita;
+              const currentBreaks = (target as any)._breaksRef || breaks;
+              const currentColorblindMode = (target as any)._colorblindModeRef ? (target as any)._colorblindModeRef.current : false;
+              
+              // Check if filtering is active and preserve filtered state
+              let opacity = 0.5;
+              let weight = 1;
+              const currentRange = (target as any)._selectedBreakRangeRef ? (target as any)._selectedBreakRangeRef.current : null;
+              if (currentRange && val != null && !isNaN(val) && val !== -1) {
+                const inRange = val > currentRange.min && val <= currentRange.max;
+                opacity = inRange ? 0.7 : 0.1;
+                weight = inRange ? 2 : 1;
+              }
+              
+              target.setStyle?.({
+                color: '#222',
+                weight: weight,
+                fillOpacity: opacity,
+                fillColor: getColor(val, currentBreaks, currentColorblindMode),
+              });
+            } catch (err) {
+              // ignore
+            }
           });
         },
       });
@@ -428,7 +587,21 @@ function LeafletMap({ city, activeLayers, sharedBreaks, colorblindMode = false, 
         },
         onEachFeature: (feature, layer) => {
           const capita = (feature!.properties as any).greenspace_per_capita;
+          
+          // Store breaks and colorblindMode ref for hover handlers
+          (layer as any)._breaksRef = breaks;
+          (layer as any)._colorblindModeRef = colorblindModeRef;
+          (layer as any)._selectedBreakRangeRef = selectedBreakRangeRef;
+          
           layer.on('click', function () {
+            // Calculate break range and notify parent
+            if (onBreakRangeSelect && capita !== -1 && capita != null && !isNaN(capita)) {
+              const range = getBreakRange(capita, breaks);
+              if (range) {
+                onBreakRangeSelect(range);
+              }
+            }
+            
             layer.bindPopup(
               `<strong>Accessible Greenspace (300m)</strong><br/>Value: ${
                 capita === -1
@@ -438,6 +611,65 @@ function LeafletMap({ city, activeLayers, sharedBreaks, colorblindMode = false, 
                   : 'N/A'
               } m²`
             ).openPopup();
+          });
+          
+          // Hover highlight
+          layer.on('mouseover', function (e: any) {
+            try {
+              const target = e?.target as any;
+              if (!target) return;
+              
+              // Check if filtering is active and only highlight filtered-in tracts
+              const val = target?.feature?.properties?.greenspace_per_capita;
+              const currentRange = (target as any)._selectedBreakRangeRef ? (target as any)._selectedBreakRangeRef.current : null;
+              
+              if (currentRange && val != null && !isNaN(val) && val !== -1) {
+                const inRange = val > currentRange.min && val <= currentRange.max;
+                if (!inRange) {
+                  // Don't apply hover effect to filtered-out tracts
+                  return;
+                }
+              }
+              
+              target.setStyle?.({
+                color: '#ffff00',
+                weight: 2,
+                fillOpacity: 0.6,
+                fillColor: '#ffff66',
+              });
+              if (target.bringToFront) target.bringToFront();
+            } catch (err) {
+              // ignore
+            }
+          });
+          
+          layer.on('mouseout', function (e: any) {
+            try {
+              const target = e?.target as any;
+              if (!target) return;
+              const val = target?.feature?.properties?.greenspace_per_capita;
+              const currentBreaks = (target as any)._breaksRef || breaks;
+              const currentColorblindMode = (target as any)._colorblindModeRef ? (target as any)._colorblindModeRef.current : false;
+              
+              // Check if filtering is active and preserve filtered state
+              let opacity = 0.5;
+              let weight = 1;
+              const currentRange = (target as any)._selectedBreakRangeRef ? (target as any)._selectedBreakRangeRef.current : null;
+              if (currentRange && val != null && !isNaN(val) && val !== -1) {
+                const inRange = val > currentRange.min && val <= currentRange.max;
+                opacity = inRange ? 0.7 : 0.1;
+                weight = inRange ? 2 : 1;
+              }
+              
+              target.setStyle?.({
+                color: '#222',
+                weight: weight,
+                fillOpacity: opacity,
+                fillColor: getColor(val, currentBreaks, currentColorblindMode),
+              });
+            } catch (err) {
+              // ignore
+            }
           });
         },
       });
@@ -492,6 +724,94 @@ function LeafletMap({ city, activeLayers, sharedBreaks, colorblindMode = false, 
   });
 }, [activeLayers, layersReady]);
 
+  // Update census layer color when colorblindMode toggles
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !mapInstanceRef.current) return;
+
+    const censusLayer = layersRef.current.census;
+    if (!censusLayer) return;
+
+    try {
+      censusLayer.eachLayer((layer: any) => {
+        if (layer && typeof layer.setStyle === 'function') {
+          layer.setStyle({ color: colorblindMode ? '#ffff00' : '#5833ff' });
+        }
+      });
+    } catch (err) {
+      console.error('Error updating census layer style for colorblindMode:', err);
+    }
+  }, [colorblindMode]);
+
+  // Filter layers by selected break range
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !mapInstanceRef.current || !selectedBreakRange) return;
+    if (!sharedBreaks || sharedBreaks.length === 0) return;
+
+    const filterLayer = (layerName: string) => {
+      const layer = layersRef.current[layerName];
+      if (!layer) return;
+
+      try {
+        (layer as any).eachLayer((sublayer: any) => {
+          const val = sublayer?.feature?.properties?.greenspace_per_capita;
+          const currentBreaks = (sublayer as any)._breaksRef || sharedBreaks;
+          const currentColorblindMode = (sublayer as any)._colorblindModeRef ? (sublayer as any)._colorblindModeRef.current : false;
+          
+          if (val == null || isNaN(val) || val === -1) {
+            // Dim out invalid values
+            sublayer.setStyle?.({ 
+              fillOpacity: 0.1,
+              fillColor: getColor(val, currentBreaks, currentColorblindMode)
+            });
+          } else {
+            // Check if value is in selected range
+            const inRange = val > selectedBreakRange.min && val <= selectedBreakRange.max;
+            sublayer.setStyle?.({ 
+              fillOpacity: inRange ? 0.7 : 0.1,
+              weight: inRange ? 2 : 1,
+              fillColor: getColor(val, currentBreaks, currentColorblindMode)
+            });
+          }
+        });
+      } catch (err) {
+        console.error(`Error filtering layer ${layerName}:`, err);
+      }
+    };
+
+    filterLayer('greenspacePerCapita');
+    filterLayer('greenspacePerCapitaSmooth');
+  }, [selectedBreakRange, sharedBreaks]);
+
+  // Reset filter when selectedBreakRange is cleared
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !mapInstanceRef.current || selectedBreakRange !== null) return;
+    if (!sharedBreaks || sharedBreaks.length === 0) return;
+
+    const resetLayer = (layerName: string) => {
+      const layer = layersRef.current[layerName];
+      if (!layer) return;
+
+      try {
+        (layer as any).eachLayer((sublayer: any) => {
+          const val = sublayer?.feature?.properties?.greenspace_per_capita;
+          const currentBreaks = (sublayer as any)._breaksRef || sharedBreaks;
+          const currentColorblindMode = (sublayer as any)._colorblindModeRef ? (sublayer as any)._colorblindModeRef.current : false;
+          
+          sublayer.setStyle?.({ 
+            fillOpacity: 0.5, 
+            weight: 1,
+            fillColor: getColor(val, currentBreaks, currentColorblindMode)
+          });
+        });
+      } catch (err) {
+        console.error(`Error resetting layer ${layerName}:`, err);
+      }
+    };
+
+    resetLayer('greenspacePerCapita');
+    resetLayer('greenspacePerCapitaSmooth');
+  }, [selectedBreakRange, sharedBreaks]);
+
   if (Platform.OS !== 'web') return null;
 
   return <div ref={mapRef} style={{ width: '100%', height: '100%' }} />;
@@ -518,6 +838,8 @@ export default function CompareScreen() {
   const [colorblindMode, setColorblindMode] = useState<boolean>(false);
   const [baseMap, setBaseMap] = useState<BaseMapType>('streets');
   const [showBaseMapSelector, setShowBaseMapSelector] = useState<boolean>(false);
+  const [leftSelectedRange, setLeftSelectedRange] = useState<{ min: number; max: number } | null>(null);
+  const [rightSelectedRange, setRightSelectedRange] = useState<{ min: number; max: number } | null>(null);
   const animatedHeight = useRef(new Animated.Value(COLLAPSED_HEIGHT)).current;
   const animatedCityHeight = useRef(new Animated.Value(CITY_COLLAPSED_HEIGHT)).current;
   
@@ -792,6 +1114,11 @@ export default function CompareScreen() {
                 sharedBreaks={sharedBreaks.length > 0 ? sharedBreaks : undefined}
                 colorblindMode={colorblindMode}
                 baseMap={baseMap}
+                selectedBreakRange={rightSelectedRange}
+                onBreakRangeSelect={(range) => {
+                  setLeftSelectedRange(range);
+                  setRightSelectedRange(null);
+                }}
               />
             ) : (
               <View style={styles.nativeMapPlaceholder}>
@@ -832,6 +1159,11 @@ export default function CompareScreen() {
                 sharedBreaks={sharedBreaks.length > 0 ? sharedBreaks : undefined}
                 colorblindMode={colorblindMode}
                 baseMap={baseMap}
+                selectedBreakRange={leftSelectedRange}
+                onBreakRangeSelect={(range) => {
+                  setRightSelectedRange(range);
+                  setLeftSelectedRange(null);
+                }}
               />
             ) : (
               <View style={styles.nativeMapPlaceholder}>
@@ -847,7 +1179,19 @@ export default function CompareScreen() {
           </View>
         </View>
         
-
+        {/* Clear filter button */}
+        {(leftSelectedRange || rightSelectedRange) && (
+          <TouchableOpacity 
+            style={[styles.clearFilterButton, { bottom: insets.bottom + 20 }]}
+            onPress={() => {
+              setLeftSelectedRange(null);
+              setRightSelectedRange(null);
+            }}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.clearFilterText}>✕ Clear Filter</Text>
+          </TouchableOpacity>
+        )}
 
         {(activeLayers.has('greenspacePerCapita') || activeLayers.has('greenspacePerCapitaSmooth')) && sharedBreaks.length > 0 && (
           <View style={[
@@ -873,31 +1217,31 @@ export default function CompareScreen() {
             {legendExpanded && (
               <View style={styles.legendItems} pointerEvents="box-none">
                 <View style={styles.legendItem}>
-                  <View style={[styles.legendColor, { backgroundColor: colorblindMode ? '#ffff00' : '#2d6a4f' }]} />
+                  <View style={[styles.legendColor, { backgroundColor: colorblindMode ? '#081d58' : '#2d6a4f' }]} />
                   <Text style={styles.legendText}>&gt; {sharedBreaks[5]?.toFixed(0)}</Text>
                 </View>
                 <View style={styles.legendItem}>
-                  <View style={[styles.legendColor, { backgroundColor: colorblindMode ? '#fde724' : '#21918c' }]} />
+                  <View style={[styles.legendColor, { backgroundColor: colorblindMode ? '#253494' : '#21918c' }]} />
                   <Text style={styles.legendText}>{sharedBreaks[4]?.toFixed(0)} - {sharedBreaks[5]?.toFixed(0)}</Text>
                 </View>
                 <View style={styles.legendItem}>
-                  <View style={[styles.legendColor, { backgroundColor: colorblindMode ? '#b5de2b' : '#5ec962' }]} />
+                  <View style={[styles.legendColor, { backgroundColor: colorblindMode ? '#225ea8' : '#5ec962' }]} />
                   <Text style={styles.legendText}>{sharedBreaks[3]?.toFixed(0)} - {sharedBreaks[4]?.toFixed(0)}</Text>
                 </View>
                 <View style={styles.legendItem}>
-                  <View style={[styles.legendColor, { backgroundColor: colorblindMode ? '#6ece58' : '#b7e28a' }]} />
+                  <View style={[styles.legendColor, { backgroundColor: colorblindMode ? '#1d91c0' : '#b7e28a' }]} />
                   <Text style={styles.legendText}>{sharedBreaks[2]?.toFixed(0)} - {sharedBreaks[3]?.toFixed(0)}</Text>
                 </View>
                 <View style={styles.legendItem}>
-                  <View style={[styles.legendColor, { backgroundColor: colorblindMode ? '#35b779' : '#f7c948' }]} />
+                  <View style={[styles.legendColor, { backgroundColor: colorblindMode ? '#41b6c4' : '#f7c948' }]} />
                   <Text style={styles.legendText}>{sharedBreaks[1]?.toFixed(0)} - {sharedBreaks[2]?.toFixed(0)}</Text>
                 </View>
                 <View style={styles.legendItem}>
-                  <View style={[styles.legendColor, { backgroundColor: colorblindMode ? '#31688e' : '#e36c0a' }]} />
+                  <View style={[styles.legendColor, { backgroundColor: colorblindMode ? '#7fcdbb' : '#e36c0a' }]} />
                   <Text style={styles.legendText}>{sharedBreaks[0]?.toFixed(0)} - {sharedBreaks[1]?.toFixed(0)}</Text>
                 </View>
                 <View style={styles.legendItem}>
-                  <View style={[styles.legendColor, { backgroundColor: colorblindMode ? '#440154' : '#bf0000' }]} />
+                  <View style={[styles.legendColor, { backgroundColor: colorblindMode ? '#c7e9b4' : '#bf0000' }]} />
                   <Text style={styles.legendText}>&lt; {sharedBreaks[0]?.toFixed(0)}</Text>
                 </View>
                 <View style={styles.legendItem}>
@@ -1664,5 +2008,24 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '700' as const,
+  },
+  clearFilterButton: {
+    position: 'absolute',
+    right: 20,
+    backgroundColor: '#2E7D32',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+    zIndex: 1000,
+  },
+  clearFilterText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600' as const,
   },
 });

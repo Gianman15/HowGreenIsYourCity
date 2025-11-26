@@ -223,7 +223,7 @@ export default function InfoScreen() {
               <View style={styles.bullet} />
               <Text style={styles.bulletText}>
                 <Text style={styles.boldText}>Colorblind Mode (🎨/👁️):</Text> Switch between standard color scheme 
-                and a colorblind-friendly Viridis palette for better accessibility
+                and a colorblind-friendly palette for better accessibility
               </Text>
             </View>
             <View style={styles.bulletItem}>
@@ -272,6 +272,20 @@ export default function InfoScreen() {
               <View style={styles.bullet} />
               <Text style={styles.bulletText}>
                 The layer toggle and color scheme apply to both maps simultaneously
+              </Text>
+            </View>
+            <View style={styles.bulletItem}>
+              <View style={styles.bullet} />
+              <Text style={styles.bulletText}>
+                <Text style={styles.boldText}>Interactive Filtering:</Text> Click on any census tract in the 
+                greenspace per capita layer to filter the opposing map to show only tracts in the same color 
+                range, making it easy to compare similar neighborhoods across cities
+              </Text>
+            </View>
+            <View style={styles.bulletItem}>
+              <View style={styles.bullet} />
+              <Text style={styles.bulletText}>
+                Click anywhere outside the census tracts or use the "Clear Filter" button to reset the comparison
               </Text>
             </View>
             <View style={styles.bulletItem}>

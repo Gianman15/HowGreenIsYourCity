@@ -58,14 +58,15 @@ function getColor(value: number | null | undefined, breaks: number[], colorblind
   if (value === -1) return '#999999'; // no residents
   
   if (colorblindMode) {
-    // Viridis color scheme (yellow-green-blue) - colorblind friendly
-    if (value <= breaks[0]) return '#440154'; // dark purple/blue (lowest)
-    if (value <= breaks[1]) return '#31688e';
-    if (value <= breaks[2]) return '#35b779';
-    if (value <= breaks[3]) return '#6ece58';
-    if (value <= breaks[4]) return '#b5de2b';
-    if (value <= breaks[5]) return '#fde724';
-    return '#ffff00'; // bright yellow (highest)
+    // ColorBrewer 'YlGnBu' 7-class (low → high) - colorblind-friendly
+    // low -> high: ['#c7e9b4', '#7fcdbb', '#41b6c4', '#1d91c0', '#225ea8', '#253494', '#081d58']
+    if (value <= breaks[0]) return '#c7e9b4';
+    if (value <= breaks[1]) return '#7fcdbb';
+    if (value <= breaks[2]) return '#41b6c4';
+    if (value <= breaks[3]) return '#1d91c0';
+    if (value <= breaks[4]) return '#225ea8';
+    if (value <= breaks[5]) return '#253494';
+    return '#081d58'; // highest
   } else {
     // Original color scheme
     if (value <= breaks[0]) return '#bf0000'; // very low
@@ -83,30 +84,75 @@ function LeafletMap({ city, activeLayers, onBreaksCalculated, colorblindMode = f
   const mapInstanceRef = useRef<any>(null);
   const layersRef = useRef<Record<string, any>>({}); // Store references to layers
   const tileLayerRef = useRef<any>(null);
+  const initInProgressRef = useRef<boolean>(false);
+  const colorblindModeRef = useRef<boolean>(colorblindMode);
+  
+  // Keep ref in sync with prop
+  useEffect(() => {
+    colorblindModeRef.current = colorblindMode;
+  }, [colorblindMode]);
 
   useEffect(() => {
-    if (Platform.OS !== 'web' || !mapRef.current) return;
+    if (Platform.OS !== 'web') return;
+
+    let cancelled = false;
 
     const initMap = async () => {
+      // Prevent concurrent initializations
+      if (initInProgressRef.current) return;
+      initInProgressRef.current = true;
+
       const L = await import('leaflet');
 
       // Clean up existing map instance and layers first
       if (mapInstanceRef.current) {
-        mapInstanceRef.current.remove();
+        try {
+          mapInstanceRef.current.remove();
+        } catch (e) {
+          console.warn('Error removing previous map instance during init:', e);
+        }
         mapInstanceRef.current = null;
       }
-      
+
       // Clear layer references
       layersRef.current = {};
       tileLayerRef.current = null;
 
-      if (!mapRef.current) return;
+      if (!mapRef.current || cancelled) {
+        initInProgressRef.current = false;
+        return;
+      }
 
-      // Initialize the map
-      const map = L.map(mapRef.current).setView(
-        [city.coordinates.latitude, city.coordinates.longitude],
-        12
-      );
+      // Try to initialize the map. If Leaflet complains that the container is already
+      // initialized, attempt one controlled recovery by removing Leaflet's internal id
+      // and retrying. We avoid aggressive deletion of DOM internals unless necessary.
+      let map: any = null;
+      try {
+        map = L.map(mapRef.current).setView(
+          [city.coordinates.latitude, city.coordinates.longitude],
+          12
+        );
+      } catch (err: any) {
+        const msg = err && err.message ? String(err.message) : '';
+        if (msg.includes('already initialized')) {
+          try {
+            if (mapRef.current && (mapRef.current as any)._leaflet_id) {
+              delete (mapRef.current as any)._leaflet_id;
+            }
+            map = L.map(mapRef.current).setView(
+              [city.coordinates.latitude, city.coordinates.longitude],
+              12
+            );
+          } catch (err2) {
+            console.error('Failed to recover from already-initialized container:', err2);
+            initInProgressRef.current = false;
+            return;
+          }
+        } else {
+          initInProgressRef.current = false;
+          throw err;
+        }
+      }
 
       // Add base map tile layer based on selection
       const getTileLayer = () => {
@@ -138,6 +184,40 @@ function LeafletMap({ city, activeLayers, onBreaksCalculated, colorblindMode = f
       tileLayerRef.current = getTileLayer();
       tileLayerRef.current.addTo(map);
 
+      // Ensure interaction handlers are enabled (covers cases where handlers
+      // are left disabled by previous init/cleanup sequences).
+      try {
+        if (map.dragging) map.dragging.enable();
+        if (map.touchZoom) map.touchZoom.enable();
+        if (map.scrollWheelZoom) map.scrollWheelZoom.enable();
+        if (map.doubleClickZoom) map.doubleClickZoom.enable();
+        if (map.boxZoom) map.boxZoom.enable();
+        if (map.keyboard && map.keyboard.enable) map.keyboard.enable();
+      } catch (e) {
+        console.warn('Error enabling map interactions:', e);
+      }
+
+      // Ensure the container allows pointer events and shows draggable cursor
+      try {
+        if (mapRef.current) {
+          (mapRef.current as HTMLDivElement).style.cursor = 'grab';
+          (mapRef.current as HTMLDivElement).style.pointerEvents = 'auto';
+          // give focusable area for keyboard interactions
+          (mapRef.current as any).tabIndex = (mapRef.current as any).tabIndex || 0;
+        }
+      } catch (e) {
+        // non-fatal
+      }
+
+      // Sometimes Leaflet needs a size invalidation after DOM changes
+      setTimeout(() => {
+        try {
+          if (map && map.invalidateSize) map.invalidateSize();
+        } catch (e) {
+          // ignore
+        }
+      }, 0);
+
       // Fetch and store the greenspace GeoJSON layer
       if (city.geojsonFiles?.greenspace) {
         try {
@@ -162,6 +242,36 @@ function LeafletMap({ city, activeLayers, onBreaksCalculated, colorblindMode = f
                   area !== undefined ? area.toFixed(2) : 'N/A'
                 } km²`
               );
+
+              // Hover highlight
+              layer.on('mouseover', function (e: any) {
+                try {
+                  const target = e?.target as any;
+                  if (!target) return;
+                  target.setStyle?.({
+                    color: '#ffff00',
+                    weight: 2,
+                    fillOpacity: 0.35,
+                  });
+                  if (target.bringToFront) target.bringToFront();
+                } catch (err) {
+                  // ignore
+                }
+              });
+
+              layer.on('mouseout', function (e: any) {
+                try {
+                  const target = e?.target as any;
+                  if (!target) return;
+                  target.setStyle?.({
+                    color: '#118011',
+                    weight: 1,
+                    fillOpacity: 0.15,
+                  });
+                } catch (err) {
+                  // ignore
+                }
+              });
             },
           });
 
@@ -188,11 +298,11 @@ function LeafletMap({ city, activeLayers, onBreaksCalculated, colorblindMode = f
           const geojsonData = await response.json();
 
           const censusLayer = L.geoJSON(geojsonData, {
-            style: {
-              color: '#5833ff', // Blue color for census tracts
+            style: () => ({
+              color: colorblindMode ? '#ffff00' : '#5833ff',
               weight: 2,
               fillOpacity: 0.0,
-            },
+            }),
             onEachFeature: (feature, layer) => {
               const population = feature.properties.pop21;
               const ctuid = feature.properties.CTUID;
@@ -201,6 +311,42 @@ function LeafletMap({ city, activeLayers, onBreaksCalculated, colorblindMode = f
                   population !== undefined ? population : 'N/A'
                 }<br/>CTUID: ${ctuid || 'N/A'}`
               );
+
+              // Store reference to colorblindMode ref for hover handlers
+              (layer as any)._colorblindModeRef = colorblindModeRef;
+
+              // Highlight on hover: change style to yellow and bring to front
+              layer.on('mouseover', function (e: any) {
+                try {
+                  const target = e?.target as any;
+                  if (!target) return;
+                  target.setStyle?.({
+                    color: '#ffff00',
+                    weight: 3,
+                    fillOpacity: 0.25,
+                  });
+                  // bring highlighted tract above others
+                  if (target.bringToFront) target.bringToFront();
+                } catch (err) {
+                  // ignore
+                }
+              });
+
+              // Restore style on mouseout
+              layer.on('mouseout', function (e: any) {
+                try {
+                  const target = e?.target as any;
+                  if (!target) return;
+                  const currentColorblindMode = (target as any)._colorblindModeRef ? (target as any)._colorblindModeRef.current : false;
+                  target.setStyle?.({
+                    color: currentColorblindMode ? '#ffff00' : '#5833ff',
+                    weight: 2,
+                    fillOpacity: 0.0,
+                  });
+                } catch (err) {
+                  // ignore
+                }
+              });
             },
           });
 
@@ -258,6 +404,45 @@ function LeafletMap({ city, activeLayers, onBreaksCalculated, colorblindMode = f
                   } m²`
                 ).openPopup();
               });
+
+              // Store breaks and colorblindMode ref in layer properties for access in event handlers
+              (layer as any)._breaksRef = breaks;
+              (layer as any)._colorblindModeRef = colorblindModeRef;
+
+              // Hover highlight: temporarily change fillColor to yellow-ish and increase opacity
+              layer.on('mouseover', function (e: any) {
+                try {
+                  const target = e?.target as any;
+                  if (!target) return;
+                  target.setStyle?.({
+                    color: '#ffff00',
+                    weight: 2,
+                    fillOpacity: 0.6,
+                    fillColor: '#ffff66',
+                  });
+                  if (target.bringToFront) target.bringToFront();
+                } catch (err) {
+                  // ignore
+                }
+              });
+
+              layer.on('mouseout', function (e: any) {
+                try {
+                  const target = e?.target as any;
+                  if (!target) return;
+                  const val = target?.feature?.properties?.greenspace_per_capita;
+                  const currentBreaks = (target as any)._breaksRef || breaks;
+                  const currentColorblindMode = (target as any)._colorblindModeRef ? (target as any)._colorblindModeRef.current : false;
+                  target.setStyle?.({
+                    color: '#222',
+                    weight: 1,
+                    fillOpacity: 0.5,
+                    fillColor: getColor(val, currentBreaks, currentColorblindMode),
+                  });
+                } catch (err) {
+                  // ignore
+                }
+              });
             },
           });
 
@@ -312,6 +497,45 @@ function LeafletMap({ city, activeLayers, onBreaksCalculated, colorblindMode = f
                   } m²`
                 ).openPopup();
               });
+
+              // Store breaks and colorblindMode ref in layer properties for access in event handlers
+              (layer as any)._breaksRef = breaks;
+              (layer as any)._colorblindModeRef = colorblindModeRef;
+
+              // Hover highlight similar to per-capita layer
+              layer.on('mouseover', function (e: any) {
+                try {
+                  const target = e?.target as any;
+                  if (!target) return;
+                  target.setStyle?.({
+                    color: '#ffff00',
+                    weight: 2,
+                    fillOpacity: 0.6,
+                    fillColor: '#ffff66',
+                  });
+                  if (target.bringToFront) target.bringToFront();
+                } catch (err) {
+                  // ignore
+                }
+              });
+
+              layer.on('mouseout', function (e: any) {
+                try {
+                  const target = e?.target as any;
+                  if (!target) return;
+                  const val = target?.feature?.properties?.greenspace_per_capita;
+                  const currentBreaks = (target as any)._breaksRef || breaks;
+                  const currentColorblindMode = (target as any)._colorblindModeRef ? (target as any)._colorblindModeRef.current : false;
+                  target.setStyle?.({
+                    color: '#222',
+                    weight: 1,
+                    fillOpacity: 0.5,
+                    fillColor: getColor(val, currentBreaks, currentColorblindMode),
+                  });
+                } catch (err) {
+                  // ignore
+                }
+              });
             },
           });
 
@@ -334,14 +558,20 @@ function LeafletMap({ city, activeLayers, onBreaksCalculated, colorblindMode = f
 
     return () => {
       // Cleanup function
+      cancelled = true;
       if (mapInstanceRef.current) {
-        mapInstanceRef.current.remove();
+        try {
+          mapInstanceRef.current.remove();
+        } catch (e) {
+          console.warn('Error removing map during cleanup:', e);
+        }
         mapInstanceRef.current = null;
       }
       layersRef.current = {};
       tileLayerRef.current = null;
+      initInProgressRef.current = false;
     };
-  }, [city, colorblindMode]);
+  }, [city]);
 
   // Update tile layer when baseMap changes
   useEffect(() => {
@@ -389,6 +619,53 @@ function LeafletMap({ city, activeLayers, onBreaksCalculated, colorblindMode = f
 
     updateTileLayer();
   }, [baseMap]);
+
+  // Update styles for choropleth layers when colorblind mode changes
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !mapInstanceRef.current) return;
+
+    const recolorLayer = (layerName: string) => {
+      const layer = layersRef.current[layerName];
+      if (!layer) return;
+
+      // Try to derive breaks from the layer's GeoJSON features
+      try {
+        const geo = (layer as any).toGeoJSON?.() || (layer as any).toGeoJSON?.(layer);
+        const features = geo?.features || [];
+        const breaks = getBreaks(features, 'greenspace_per_capita', 7);
+
+        (layer as any).eachLayer((sublayer: any) => {
+          try {
+            const val = sublayer?.feature?.properties?.greenspace_per_capita;
+            sublayer.setStyle?.({ fillColor: getColor(val, breaks, colorblindMode) });
+            // Update the stored getter so mouseout uses current colorblind mode
+            if (sublayer._breaksRef) sublayer._breaksRef = breaks;
+          } catch (e) {
+            // ignore per-feature errors
+          }
+        });
+      } catch (e) {
+        console.warn(`Could not recolor layer ${layerName}:`, e);
+      }
+    };
+
+    // Recolor census layer
+    const censusLayer = layersRef.current.census;
+    if (censusLayer) {
+      try {
+        (censusLayer as any).eachLayer((sublayer: any) => {
+          if (sublayer && typeof sublayer.setStyle === 'function') {
+            sublayer.setStyle({ color: colorblindMode ? '#ffff00' : '#5833ff' });
+          }
+        });
+      } catch (err) {
+        console.error('Error updating census layer style for colorblindMode:', err);
+      }
+    }
+
+    recolorLayer('greenspacePerCapita');
+    recolorLayer('greenspacePerCapitaSmooth');
+  }, [colorblindMode]);
 
 
  // Add/remove layers based on activeLayers state
@@ -686,31 +963,31 @@ export default function HomeScreen() {
             {legendExpanded && (
               <View style={styles.legendItems} pointerEvents="box-none">
                 <View style={styles.legendItem}>
-                  <View style={[styles.legendColor, { backgroundColor: colorblindMode ? '#ffff00' : '#2d6a4f' }]} />
+                  <View style={[styles.legendColor, { backgroundColor: colorblindMode ? '#081d58' : '#2d6a4f' }]} />
                   <Text style={styles.legendText}>&gt; {cityBreaks[5]?.toFixed(0)}</Text>
                 </View>
                 <View style={styles.legendItem}>
-                  <View style={[styles.legendColor, { backgroundColor: colorblindMode ? '#fde724' : '#21918c' }]} />
+                  <View style={[styles.legendColor, { backgroundColor: colorblindMode ? '#253494' : '#21918c' }]} />
                   <Text style={styles.legendText}>{cityBreaks[4]?.toFixed(0)} - {cityBreaks[5]?.toFixed(0)}</Text>
                 </View>
                 <View style={styles.legendItem}>
-                  <View style={[styles.legendColor, { backgroundColor: colorblindMode ? '#b5de2b' : '#5ec962' }]} />
+                  <View style={[styles.legendColor, { backgroundColor: colorblindMode ? '#225ea8' : '#5ec962' }]} />
                   <Text style={styles.legendText}>{cityBreaks[3]?.toFixed(0)} - {cityBreaks[4]?.toFixed(0)}</Text>
                 </View>
                 <View style={styles.legendItem}>
-                  <View style={[styles.legendColor, { backgroundColor: colorblindMode ? '#6ece58' : '#b7e28a' }]} />
+                  <View style={[styles.legendColor, { backgroundColor: colorblindMode ? '#1d91c0' : '#b7e28a' }]} />
                   <Text style={styles.legendText}>{cityBreaks[2]?.toFixed(0)} - {cityBreaks[3]?.toFixed(0)}</Text>
                 </View>
                 <View style={styles.legendItem}>
-                  <View style={[styles.legendColor, { backgroundColor: colorblindMode ? '#35b779' : '#f7c948' }]} />
+                  <View style={[styles.legendColor, { backgroundColor: colorblindMode ? '#41b6c4' : '#f7c948' }]} />
                   <Text style={styles.legendText}>{cityBreaks[1]?.toFixed(0)} - {cityBreaks[2]?.toFixed(0)}</Text>
                 </View>
                 <View style={styles.legendItem}>
-                  <View style={[styles.legendColor, { backgroundColor: colorblindMode ? '#31688e' : '#e36c0a' }]} />
+                  <View style={[styles.legendColor, { backgroundColor: colorblindMode ? '#7fcdbb' : '#e36c0a' }]} />
                   <Text style={styles.legendText}>{cityBreaks[0]?.toFixed(0)} - {cityBreaks[1]?.toFixed(0)}</Text>
                 </View>
                 <View style={styles.legendItem}>
-                  <View style={[styles.legendColor, { backgroundColor: colorblindMode ? '#440154' : '#bf0000' }]} />
+                  <View style={[styles.legendColor, { backgroundColor: colorblindMode ? '#c7e9b4' : '#bf0000' }]} />
                   <Text style={styles.legendText}>&lt; {cityBreaks[0]?.toFixed(0)}</Text>
                 </View>
                 <View style={styles.legendItem}>

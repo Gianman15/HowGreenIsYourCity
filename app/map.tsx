@@ -184,18 +184,8 @@ function LeafletMap({ city, activeLayers, onBreaksCalculated, colorblindMode = f
       tileLayerRef.current = getTileLayer();
       tileLayerRef.current.addTo(map);
 
-      // Ensure interaction handlers are enabled (covers cases where handlers
-      // are left disabled by previous init/cleanup sequences).
-      try {
-        if (map.dragging) map.dragging.enable();
-        if (map.touchZoom) map.touchZoom.enable();
-        if (map.scrollWheelZoom) map.scrollWheelZoom.enable();
-        if (map.doubleClickZoom) map.doubleClickZoom.enable();
-        if (map.boxZoom) map.boxZoom.enable();
-        if (map.keyboard && map.keyboard.enable) map.keyboard.enable();
-      } catch (e) {
-        console.warn('Error enabling map interactions:', e);
-      }
+      // Store map reference immediately so interactions can be enabled
+      mapInstanceRef.current = map;
 
       // Ensure the container allows pointer events and shows draggable cursor
       try {
@@ -209,14 +199,36 @@ function LeafletMap({ city, activeLayers, onBreaksCalculated, colorblindMode = f
         // non-fatal
       }
 
-      // Sometimes Leaflet needs a size invalidation after DOM changes
+      // Ensure interaction handlers are enabled (covers cases where handlers
+      // are left disabled by previous init/cleanup sequences).
+      const enableInteractions = () => {
+        try {
+          if (map.dragging) map.dragging.enable();
+          if (map.touchZoom) map.touchZoom.enable();
+          if (map.scrollWheelZoom) map.scrollWheelZoom.enable();
+          if (map.doubleClickZoom) map.doubleClickZoom.enable();
+          if (map.boxZoom) map.boxZoom.enable();
+          if (map.keyboard && map.keyboard.enable) map.keyboard.enable();
+        } catch (e) {
+          console.warn('Error enabling map interactions:', e);
+        }
+      };
+
+      // Enable interactions immediately
+      enableInteractions();
+
+      // On first load without cache, Leaflet might need extra time to attach handlers
+      // Re-enable interactions and invalidate size after a short delay
       setTimeout(() => {
         try {
-          if (map && map.invalidateSize) map.invalidateSize();
+          if (map && map.invalidateSize) {
+            map.invalidateSize();
+            enableInteractions(); // Re-enable to ensure handlers are attached
+          }
         } catch (e) {
           // ignore
         }
-      }, 0);
+      }, 100); // Increased from 0ms to 100ms for better reliability
 
       // Fetch and store the greenspace GeoJSON layer
       if (city.geojsonFiles?.greenspace) {
@@ -551,7 +563,9 @@ function LeafletMap({ city, activeLayers, onBreaksCalculated, colorblindMode = f
           console.error(`Error loading smoothed greenspace per capita GeoJSON data:`, error);
         }
       }
-      mapInstanceRef.current = map;
+      
+      // Mark initialization complete
+      initInProgressRef.current = false;
     };
 
     initMap();

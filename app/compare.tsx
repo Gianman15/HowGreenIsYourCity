@@ -939,6 +939,13 @@ export default function CompareScreen() {
       }
       return newSet;
     });
+    
+    // Clear selected break ranges when toggling greenspace layers
+    // This prevents the hover bug where switching layers causes tract colors to be erased
+    if (layerName === 'greenspacePerCapita' || layerName === 'greenspacePerCapitaSmooth') {
+      setLeftSelectedRange(null);
+      setRightSelectedRange(null);
+    }
   };
 
   const toggleCityDrawer = () => {
@@ -1210,8 +1217,13 @@ export default function CompareScreen() {
                   Platform.OS === 'web' && { cursor: 'pointer' as any }
                 ]}
               >
-                <Text style={styles.legendTitle}>Greenspace per Capita (m²)</Text>
-                {legendExpanded ? <ChevronDown size={16} color="#1B5E20" /> : <ChevronUp size={16} color="#1B5E20" />}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={styles.legendTitle}>Greenspace per Capita (m²)</Text>
+                  <Text style={styles.legendHint}>
+                    {legendExpanded ? '(tap to hide)' : '(tap to show)'}
+                  </Text>
+                </View>
+                {legendExpanded ? <ChevronDown size={18} color="#2E7D32" strokeWidth={2.5} /> : <ChevronUp size={18} color="#2E7D32" strokeWidth={2.5} />}
               </TouchableOpacity>
             </View>
             {legendExpanded && (
@@ -1259,10 +1271,14 @@ export default function CompareScreen() {
             { maxHeight: windowDimensions.height - 150 },
             isSmartphone && { right: 20, top: 120 }
           ]}>
-            <View style={styles.selectorTitleContainer}>
+            <TouchableOpacity 
+              style={styles.selectorTitleContainer}
+              onPress={() => setShowBaseMapSelector(false)}
+              activeOpacity={0.7}
+            >
               <Map size={18} color="#1B5E20" />
               <Text style={styles.layerSelectorTitle}>Base Map</Text>
-            </View>
+            </TouchableOpacity>
             <ScrollView 
               style={styles.layerScrollView}
               showsVerticalScrollIndicator={false}
@@ -1348,10 +1364,14 @@ export default function CompareScreen() {
 
          {showLayerSelector && (
           <View style={[styles.layerSelector, { maxHeight: windowDimensions.height - 150 }]}>
-            <View style={styles.selectorTitleContainer}>
+            <TouchableOpacity 
+              style={styles.selectorTitleContainer}
+              onPress={() => setShowLayerSelector(false)}
+              activeOpacity={0.7}
+            >
               <Layers size={18} color="#1B5E20" />
               <Text style={styles.layerSelectorTitle}>Map Layers</Text>
-            </View>
+            </TouchableOpacity>
             <ScrollView 
               style={styles.layerScrollView}
               showsVerticalScrollIndicator={false}
@@ -1703,7 +1723,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600' as const,
     color: '#1B5E20',
-    marginBottom: 12,
+  },
+  legendHint: {
+    fontSize: 10,
+    color: '#7CB342',
+    fontStyle: 'italic' as const,
   },
   legendGrid: {
     flexDirection: 'row',
@@ -1938,7 +1962,7 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 4,
     zIndex: 10000,
-    width: 240,
+    width: 280,
     ...Platform.select({
       web: {
         pointerEvents: 'auto' as any,

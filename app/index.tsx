@@ -49,7 +49,7 @@ export default function LandingScreen() {
           </View>
 
           <Text style={styles.title}>
-            {isSmartphone ? 'Urban Green Spaces (mobile)' : 'Urban Green Spaces'}
+            {isSmartphone ? 'Urban Green Spaces' : 'Urban Green Spaces'}
           </Text>
           <Text style={styles.subtitle}>
             Discover and compare green space coverage across major cities in Canada!

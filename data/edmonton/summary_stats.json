@@ -1,0 +1,11 @@
+{
+  "city_name": "edmonton",
+  "cduid": "4811",
+  "average_greenspace_per_capita_m2": 7623.29,
+  "total_greenspace_area_km2": 10691.93,
+  "total_population": 1402534,
+  "greenspace_percentage": 92.51,
+  "total_land_area_km2": 11557.98,
+  "number_of_census_tracts": 348,
+  "tracts_with_population": 338
+}

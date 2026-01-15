@@ -1,0 +1,11 @@
+{
+  "city_name": "calgary",
+  "cduid": "4806",
+  "average_greenspace_per_capita_m2": 4815.95,
+  "total_greenspace_area_km2": 7091.06,
+  "total_population": 1472412,
+  "greenspace_percentage": 119.28,
+  "total_land_area_km2": 5945.01,
+  "number_of_census_tracts": 327,
+  "tracts_with_population": 322
+}

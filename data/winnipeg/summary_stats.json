@@ -1,0 +1,11 @@
+{
+  "city_name": "winnipeg",
+  "cduid": "4611",
+  "average_greenspace_per_capita_m2": 575.26,
+  "total_greenspace_area_km2": 448.03,
+  "total_population": 778839,
+  "greenspace_percentage": 71.66,
+  "total_land_area_km2": 625.25,
+  "number_of_census_tracts": 179,
+  "tracts_with_population": 175
+}

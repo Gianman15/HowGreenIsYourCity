@@ -969,14 +969,6 @@ export default function CompareScreen() {
     <View style={styles.container}>
       <Stack.Screen
         options={{
-          title: 'Compare Cities',
-          headerStyle: {
-            backgroundColor: '#FFFFFF',
-          },
-          headerTintColor: '#1B5E20',
-          headerTitleStyle: {
-            fontWeight: '700' as const,
-          },
           headerRight: () => (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginRight: 12 }}>
               <TouchableOpacity 

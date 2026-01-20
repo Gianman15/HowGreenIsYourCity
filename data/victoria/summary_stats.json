@@ -1,10 +1,10 @@
 {
   "city_name": "victoria",
   "cduid": "5917",
-  "average_greenspace_per_capita_m2": 6394.62,
-  "total_greenspace_area_km2": 2516.0,
+  "average_greenspace_per_capita_m2": 1871.52,
+  "total_greenspace_area_km2": 736.36,
   "total_population": 393456,
-  "greenspace_percentage": 264.69,
+  "greenspace_percentage": 77.47,
   "total_land_area_km2": 950.55,
   "number_of_census_tracts": 84,
   "tracts_with_population": 83

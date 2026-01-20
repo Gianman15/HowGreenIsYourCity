@@ -8,6 +8,7 @@ import {
   Platform,
   Dimensions,
   Animated,
+  PanResponder,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
@@ -153,10 +154,15 @@ function LeafletMap({ city, activeLayers, sharedBreaks, colorblindMode = false, 
 
       if (!mapRef.current) return;
 
+      // Determine zoom level based on screen size
+      const { width, height } = Dimensions.get('window');
+      const isMobile = width < 768 || height < 768;
+      const zoomLevel = isMobile ? 10 : 12;
+
       // Initialize the map
-      const map = L.map(mapRef.current).setView(
+      const map = L.map(mapRef.current, { zoomControl: false }).setView(
         [city.coordinates.latitude, city.coordinates.longitude],
-        12
+        zoomLevel
       );
 
       // Store reference immediately so other effects can safely access the map
@@ -838,6 +844,8 @@ export default function CompareScreen() {
   const [colorblindMode, setColorblindMode] = useState<boolean>(false);
   const [baseMap, setBaseMap] = useState<BaseMapType>('streets');
   const [showBaseMapSelector, setShowBaseMapSelector] = useState<boolean>(false);
+  const legendPosition = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
+  const [isDragging, setIsDragging] = useState(false);
   const [leftSelectedRange, setLeftSelectedRange] = useState<{ min: number; max: number } | null>(null);
   const [rightSelectedRange, setRightSelectedRange] = useState<{ min: number; max: number } | null>(null);
   const animatedHeight = useRef(new Animated.Value(COLLAPSED_HEIGHT)).current;
@@ -965,6 +973,34 @@ export default function CompareScreen() {
     setRightCity(temp);
   };
 
+  const legendPanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (evt, gestureState) => {
+        // Only start dragging if moved more than 5 pixels
+        return Math.abs(gestureState.dx) > 5 || Math.abs(gestureState.dy) > 5;
+      },
+      onPanResponderGrant: () => {
+        setIsDragging(true);
+        legendPosition.setOffset({
+          x: (legendPosition.x as any)._value,
+          y: (legendPosition.y as any)._value,
+        });
+      },
+      onPanResponderMove: Animated.event(
+        [
+          null,
+          { dx: legendPosition.x, dy: legendPosition.y },
+        ],
+        { useNativeDriver: false }
+      ),
+      onPanResponderRelease: () => {
+        setIsDragging(false);
+        legendPosition.flattenOffset();
+      },
+    })
+  ).current;
+
   return (
     <View style={styles.container}>
       <Stack.Screen
@@ -1011,7 +1047,6 @@ export default function CompareScreen() {
           activeOpacity={0.8}
         >
           <MapPin size={20} color="#FFFFFF" />
-          <Text style={styles.cityButtonText}>{leftCity.name} vs {rightCity.name}</Text>
         </TouchableOpacity>
       ) : (
         <Animated.View style={[styles.cityDrawer, { height: animatedCityHeight }]}>
@@ -1193,10 +1228,21 @@ export default function CompareScreen() {
         )}
 
         {(activeLayers.has('greenspacePerCapita') || activeLayers.has('greenspacePerCapitaSmooth')) && sharedBreaks.length > 0 && (
-          <View style={[
-            styles.legend,
-            isSmartphone && { bottom: insets.bottom + 20, left: 220, transform: [] }
-          ]}>
+          <Animated.View 
+            style={[
+              styles.legend,
+              isSmartphone && { bottom: insets.bottom + 20, left: 220 },
+              isSmartphone && !legendExpanded && { width: 120, left: undefined, right: 16, paddingHorizontal: 8 },
+              {
+                transform: [
+                  { translateX: legendPosition.x },
+                  { translateY: legendPosition.y },
+                ],
+              },
+              isDragging && { opacity: 0.8 },
+            ]}
+            {...legendPanResponder.panHandlers}
+          >
             <View pointerEvents="auto">
               <TouchableOpacity 
                 onPress={() => {
@@ -1209,13 +1255,28 @@ export default function CompareScreen() {
                   Platform.OS === 'web' && { cursor: 'pointer' as any }
                 ]}
               >
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Text style={styles.legendTitle}>Greenspace per Capita (m²)</Text>
-                  <Text style={styles.legendHint}>
-                    {legendExpanded ? '(tap to hide)' : '(tap to show)'}
-                  </Text>
-                </View>
-                {legendExpanded ? <ChevronDown size={18} color="#2E7D32" strokeWidth={2.5} /> : <ChevronUp size={18} color="#2E7D32" strokeWidth={2.5} />}
+                {!legendExpanded && isSmartphone ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Trees size={20} color="#2E7D32" />
+                    <View style={{ flexDirection: 'row', gap: 4 }}>
+                      <View style={[styles.legendDotSmall, { backgroundColor: colorblindMode ? '#c7e9b4' : '#bf0000' }]} />
+                      <View style={[styles.legendDotSmall, { backgroundColor: colorblindMode ? '#41b6c4' : '#f7c948' }]} />
+                      <View style={[styles.legendDotSmall, { backgroundColor: colorblindMode ? '#081d58' : '#2d6a4f' }]} />
+                    </View>
+                  </View>
+                ) : (
+                  <>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text style={styles.legendTitle}>Greenspace per Capita (m²)</Text>
+                      {!isSmartphone && (
+                        <Text style={styles.legendHint}>
+                          {legendExpanded ? '(tap to hide)' : '(tap to show)'}
+                        </Text>
+                      )}
+                    </View>
+                    {legendExpanded ? <ChevronDown size={18} color="#2E7D32" strokeWidth={2.5} /> : <ChevronUp size={18} color="#2E7D32" strokeWidth={2.5} />}
+                  </>
+                )}
               </TouchableOpacity>
             </View>
             {legendExpanded && (
@@ -1254,7 +1315,7 @@ export default function CompareScreen() {
                 </View>
               </View>
             )}
-          </View>
+          </Animated.View>
         )}
 
          {showBaseMapSelector && (
@@ -1455,7 +1516,7 @@ export default function CompareScreen() {
           activeOpacity={0.8}
         >
           <Leaf size={20} color="#FFFFFF" />
-          <Text style={styles.factsButtonText}>Comparison Stats</Text>
+          {!isSmartphone && <Text style={styles.factsButtonText}>Comparison Stats</Text>}
         </TouchableOpacity>
       ) : (
         <Animated.View style={[
@@ -1561,6 +1622,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F5F9F5',
+    overflow: 'hidden',
   },
   
   citySelector: {
@@ -1978,6 +2040,13 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     borderWidth: 1,
     borderColor: '#DDD',
+  },
+  legendDotSmall: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
   },
 
   cityButtonCompact: {

@@ -64,7 +64,7 @@ export default function LandingScreen() {
               </View>
               <Text style={styles.featureTitle}>Interactive Maps</Text>
               <Text style={styles.featureDescription}>
-                Explore detailed maps showing parks, forests, gardens, and nature reserves seen from space
+                Explore detailed maps showing parks, forests, gardens, and nature reserves seen from space contextualized within government census tracts
               </Text>
             </View>
 
@@ -74,7 +74,7 @@ export default function LandingScreen() {
               </View>
               <Text style={styles.featureTitle}>Environmental Data</Text>
               <Text style={styles.featureDescription}>
-                Access comprehensive statistics and insights about urban green spaces
+                Access statistics and insights about urban green spaces in canadian cities
               </Text>
             </View>
 
@@ -84,7 +84,7 @@ export default function LandingScreen() {
               </View>
               <Text style={styles.featureTitle}>City Comparison</Text>
               <Text style={styles.featureDescription}>
-                Compare green space coverage and per capita metrics across multiple cities
+                Compare green space coverage and per capita metrics across multiple cities by clicking on tracts to highlight a shared statistical view
               </Text>
             </View>
           </View>

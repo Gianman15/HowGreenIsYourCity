@@ -8,6 +8,7 @@ import {
   Platform,
   Dimensions,
   Animated,
+  PanResponder,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
@@ -126,11 +127,16 @@ function LeafletMap({ city, activeLayers, onBreaksCalculated, colorblindMode = f
       // Try to initialize the map. If Leaflet complains that the container is already
       // initialized, attempt one controlled recovery by removing Leaflet's internal id
       // and retrying. We avoid aggressive deletion of DOM internals unless necessary.
+      // Determine zoom level based on screen size
+      const { width, height } = Dimensions.get('window');
+      const isMobile = width < 768 || height < 768;
+      const zoomLevel = isMobile ? 10 : 12;
+
       let map: any = null;
       try {
-        map = L.map(mapRef.current).setView(
+        map = L.map(mapRef.current, { zoomControl: false }).setView(
           [city.coordinates.latitude, city.coordinates.longitude],
-          12
+          zoomLevel
         );
       } catch (err: any) {
         const msg = err && err.message ? String(err.message) : '';
@@ -139,9 +145,9 @@ function LeafletMap({ city, activeLayers, onBreaksCalculated, colorblindMode = f
             if (mapRef.current && (mapRef.current as any)._leaflet_id) {
               delete (mapRef.current as any)._leaflet_id;
             }
-            map = L.map(mapRef.current).setView(
+            map = L.map(mapRef.current, { zoomControl: false }).setView(
               [city.coordinates.latitude, city.coordinates.longitude],
-              12
+              zoomLevel
             );
           } catch (err2) {
             console.error('Failed to recover from already-initialized container:', err2);
@@ -744,6 +750,8 @@ export default function HomeScreen() {
   const [showBaseMapSelector, setShowBaseMapSelector] = useState<boolean>(false);
   const animatedHeight = useRef(new Animated.Value(COLLAPSED_HEIGHT)).current;
   const animatedCityHeight = useRef(new Animated.Value(CITY_COLLAPSED_HEIGHT)).current;
+  const legendPosition = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
+  const [isDragging, setIsDragging] = useState(false);
   
   // Detect if using a smartphone (based on screen dimensions) - updates on rotation
   // Mobile/compact mode when EITHER width OR height is < 768 (includes landscape on phones)
@@ -830,6 +838,34 @@ export default function HomeScreen() {
     }).start();
     setCityDrawerExpanded(!cityDrawerExpanded);
   };
+
+  const legendPanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (evt, gestureState) => {
+        // Only start dragging if moved more than 5 pixels
+        return Math.abs(gestureState.dx) > 5 || Math.abs(gestureState.dy) > 5;
+      },
+      onPanResponderGrant: () => {
+        setIsDragging(true);
+        legendPosition.setOffset({
+          x: (legendPosition.x as any)._value,
+          y: (legendPosition.y as any)._value,
+        });
+      },
+      onPanResponderMove: Animated.event(
+        [
+          null,
+          { dx: legendPosition.x, dy: legendPosition.y },
+        ],
+        { useNativeDriver: false }
+      ),
+      onPanResponderRelease: () => {
+        setIsDragging(false);
+        legendPosition.flattenOffset();
+      },
+    })
+  ).current;
 
   return (
     <View style={styles.container}>
@@ -946,10 +982,21 @@ export default function HomeScreen() {
 
 
         {(activeLayers.has('greenspacePerCapita') || activeLayers.has('greenspacePerCapitaSmooth')) && cityBreaks.length > 0 && (
-          <View style={[
-            styles.legend,
-            isSmartphone && { bottom: insets.bottom + 20, left: 220, transform: [] }
-          ]}>
+          <Animated.View 
+            style={[
+              styles.legend,
+              isSmartphone && { bottom: insets.bottom + 20, left: 220 },
+              isSmartphone && !legendExpanded && { width: 120, left: undefined, right: 16, paddingHorizontal: 8 },
+              {
+                transform: [
+                  { translateX: legendPosition.x },
+                  { translateY: legendPosition.y },
+                ],
+              },
+              isDragging && { opacity: 0.8 },
+            ]}
+            {...legendPanResponder.panHandlers}
+          >
             <View pointerEvents="auto">
               <TouchableOpacity 
                 onPress={() => {
@@ -962,13 +1009,28 @@ export default function HomeScreen() {
                   Platform.OS === 'web' && { cursor: 'pointer' as any }
                 ]}
               >
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Text style={styles.legendTitle}>Greenspace per Capita (m²)</Text>
-                  <Text style={styles.legendHint}>
-                    {legendExpanded ? '(tap to hide)' : '(tap to show)'}
-                  </Text>
-                </View>
-                {legendExpanded ? <ChevronDown size={18} color="#2E7D32" strokeWidth={2.5} /> : <ChevronUp size={18} color="#2E7D32" strokeWidth={2.5} />}
+                {!legendExpanded && isSmartphone ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Trees size={20} color="#2E7D32" />
+                    <View style={{ flexDirection: 'row', gap: 4 }}>
+                      <View style={[styles.legendDotSmall, { backgroundColor: colorblindMode ? '#c7e9b4' : '#bf0000' }]} />
+                      <View style={[styles.legendDotSmall, { backgroundColor: colorblindMode ? '#41b6c4' : '#f7c948' }]} />
+                      <View style={[styles.legendDotSmall, { backgroundColor: colorblindMode ? '#081d58' : '#2d6a4f' }]} />
+                    </View>
+                  </View>
+                ) : (
+                  <>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text style={styles.legendTitle}>Greenspace per Capita (m²)</Text>
+                      {!isSmartphone && (
+                        <Text style={styles.legendHint}>
+                          {legendExpanded ? '(tap to hide)' : '(tap to show)'}
+                        </Text>
+                      )}
+                    </View>
+                    {legendExpanded ? <ChevronDown size={18} color="#2E7D32" strokeWidth={2.5} /> : <ChevronUp size={18} color="#2E7D32" strokeWidth={2.5} />}
+                  </>
+                )}
               </TouchableOpacity>
             </View>
             {legendExpanded && (
@@ -1007,7 +1069,7 @@ export default function HomeScreen() {
                 </View>
               </View>
             )}
-          </View>
+          </Animated.View>
         )}
 
          {showBaseMapSelector && (
@@ -1026,7 +1088,7 @@ export default function HomeScreen() {
             </TouchableOpacity>
             <ScrollView 
               style={styles.layerScrollView}
-              showsVerticalScrollIndicator={false}
+              showsVerticalScrollIndicator={true}
             >
               <TouchableOpacity 
                 style={styles.layerOption}
@@ -1119,7 +1181,7 @@ export default function HomeScreen() {
             </TouchableOpacity>
             <ScrollView 
               style={styles.layerScrollView}
-              showsVerticalScrollIndicator={false}
+              showsVerticalScrollIndicator={true}
             >
               <TouchableOpacity 
                 style={styles.layerOption}
@@ -1208,7 +1270,7 @@ export default function HomeScreen() {
           activeOpacity={0.8}
         >
           <Leaf size={20} color="#FFFFFF" />
-          <Text style={styles.factsButtonText}>Green Space Facts</Text>
+          {!isSmartphone && <Text style={styles.factsButtonText}>Green Space Facts</Text>}
         </TouchableOpacity>
       ) : (
         <Animated.View style={[
@@ -1640,6 +1702,13 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     borderWidth: 1,
     borderColor: '#DDD',
+  },
+  legendDotSmall: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
   },
 
   cityButtonCompact: {

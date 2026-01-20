@@ -96,6 +96,70 @@ const BASE_CITIES = [
       summaryStats: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/data/vancouver/summary_stats.json',
     },
   },
+  {
+    id: 'calgary',
+    name: 'Calgary',
+    country: 'Canada',
+    coordinates: {
+      latitude: 51.0447,
+      longitude: -114.0719,
+    },
+     geojsonFiles: {
+      census: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/data/calgary/censustracts.geojson',
+      greenspace: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/data/calgary/greenspace_clipped_4806.geojson',
+      greenspacePerCapita: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/data/calgary/greenspace_per_capita.geojson',
+      greenspacePerCapitaSmooth: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/data/calgary/greenspace_per_capita_smoothed.geojson',
+      summaryStats: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/data/calgary/summary_stats.json',
+    },
+  },/*
+  {
+    id: 'edmonton',
+    name: 'Edmonton',
+    country: 'Canada',
+    coordinates: {
+      latitude: 53.5461,
+      longitude: -113.4938,
+    },
+    geojsonFiles: {
+      census: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/data/edmonton/censustracts.geojson',
+      greenspace: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/data/edmonton/greenspace_clipped_4811.geojson',
+      greenspacePerCapita: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/data/edmonton/greenspace_per_capita.geojson',
+      greenspacePerCapitaSmooth: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/data/edmonton/greenspace_per_capita_smoothed.geojson',
+      summaryStats: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/data/edmonton/summary_stats.json',
+    },
+  },*/
+  {
+    id: 'winnipeg',
+    name: 'Winnipeg',
+    country: 'Canada',
+    coordinates: {
+      latitude: 49.8951,
+      longitude: -97.1384,
+    },
+    geojsonFiles: {
+      census: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/data/winnipeg/censustracts.geojson',
+      greenspace: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/data/winnipeg/greenspace_clipped_4611.geojson',
+      greenspacePerCapita: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/data/winnipeg/greenspace_per_capita.geojson',
+      greenspacePerCapitaSmooth: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/data/winnipeg/greenspace_per_capita_smoothed.geojson',
+      summaryStats: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/data/winnipeg/summary_stats.json',
+    },
+  },
+  {
+    id: 'victoria',
+    name: 'Victoria',
+    country: 'Canada',
+    coordinates: {
+      latitude: 48.4284,
+      longitude: -123.3656,
+    },
+    geojsonFiles: {
+      census: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/data/victoria/censustracts.geojson',
+      greenspace: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/data/victoria/greenspace_clipped_5917.geojson',
+      greenspacePerCapita: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/data/victoria/greenspace_per_capita.geojson',
+      greenspacePerCapitaSmooth: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/data/victoria/greenspace_per_capita_smoothed.geojson',
+      summaryStats: 'https://raw.githubusercontent.com/gianman15/HowGreenIsYourCity/main/data/victoria/summary_stats.json',
+    },
+  },
 ] as const;
 
 // Cache for loaded stats

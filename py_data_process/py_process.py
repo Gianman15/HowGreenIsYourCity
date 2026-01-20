@@ -127,7 +127,7 @@ def clip_geojson_to_CD(input_file, output_dir, census_div_shapefile, cduid=None)
     clipped_gdf.to_file(output_file, driver="GeoJSON")
     print(f"Clipped GeoJSON saved to: {output_file}")
     return output_file
-def combine_greenspace_with_census(input_file, output_dir, census_dir=None):
+def combine_greenspace_with_census(input_file, output_dir, census_dir=None, census_div_shapefile=None, cduid=None):
     import geopandas as gpd
     import pandas as pd
     import os
@@ -147,6 +147,14 @@ def combine_greenspace_with_census(input_file, output_dir, census_dir=None):
         else:
             census_path = os.path.join(census_dir, "censustracts.geojson")
         census_gdf = gpd.read_file(census_path)
+        if census_div_shapefile is not None and cduid is not None:
+            census_div_gdf = gpd.read_file(census_div_shapefile)
+            census_div_gdf = census_div_gdf.to_crs(epsg=4326)
+            cd_geometry = census_div_gdf[census_div_gdf["CDUID"] == cduid]
+            if not cd_geometry.empty:
+                census_gdf = census_gdf.to_crs(epsg=4326)
+                census_gdf = gpd.clip(census_gdf, cd_geometry)
+                print(f"Census tracts clipped to census division: {cduid}")
         if 'LANDAREA_y' in census_gdf.columns:
             census_gdf['LANDAREA'] = pd.to_numeric(census_gdf['LANDAREA_y'], errors='coerce') * 1e6
         elif 'LANDAREA_x' in census_gdf.columns:
@@ -185,6 +193,58 @@ def combine_greenspace_with_census(input_file, output_dir, census_dir=None):
         return combined_file
     except Exception as e:
         print(f"Error saving the combined GeoJSON: {e}")
+        return None
+def write_frontend_clipped_greenspace(combined_file, base_dir, city_name, cduid):
+    import geopandas as gpd
+    import os
+    print(f"\n📐 Creating tract-clipped greenspace for frontend...")
+    try:
+        gdf = gpd.read_file(combined_file)
+        print(f"   Loaded {len(gdf)} greenspace polygons from combined file")
+    except Exception as e:
+        print(f"❌ Error loading combined greenspace: {e}")
+        return None
+    census_file = os.path.join(base_dir, "data", city_name, "censustracts.geojson")
+    try:
+        census_gdf = gpd.read_file(census_file)
+        print(f"   Loaded {len(census_gdf)} census tracts")
+    except Exception as e:
+        print(f"❌ Error loading census tracts: {e}")
+        return None
+    gdf = gdf.to_crs(epsg=4326)
+    census_gdf = census_gdf.to_crs(epsg=4326)
+    print(f"   Clipping greenspace to census tract union...")
+    census_union = census_gdf.union_all()
+    clipped_gdf = gpd.clip(gdf, census_union)
+    print(f"   Result: {len(clipped_gdf)} polygons after clipping")
+    clipped_gdf = clipped_gdf[['geometry']].copy()
+    clipped_gdf = gpd.GeoDataFrame(clipped_gdf, geometry='geometry', crs='EPSG:4326')
+    out_dir = os.path.join(base_dir, "data", city_name)
+    os.makedirs(out_dir, exist_ok=True)
+    out_file = os.path.join(out_dir, f"greenspace_clipped_{cduid}.geojson")
+    try:
+        clipped_gdf.to_file(out_file, driver="GeoJSON")
+        print(f"✅ Frontend greenspace saved: {out_file}")
+        gs_bounds = clipped_gdf.total_bounds
+        ct_bounds = census_gdf.total_bounds
+        extends = []
+        if gs_bounds[0] < ct_bounds[0] - 0.0001:
+            extends.append("west")
+        if gs_bounds[2] > ct_bounds[2] + 0.0001:
+            extends.append("east")
+        if gs_bounds[1] < ct_bounds[1] - 0.0001:
+            extends.append("south")
+        if gs_bounds[3] > ct_bounds[3] + 0.0001:
+            extends.append("north")
+        if extends:
+            print(f"⚠️  Warning: Greenspace still extends beyond tracts: {', '.join(extends)}")
+        else:
+            print(f"✅ Verified: Greenspace is within census tract bounds")
+        return out_file
+    except Exception as e:
+        print(f"❌ Error writing frontend greenspace: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 def process_greenspace_census_data(input_file, output_dir):
     import geopandas as gpd
@@ -385,11 +445,22 @@ def generate_city_summary_stats(city_name, base_dir, cduid):
     if os.path.exists(greenspace_file_clipped) or os.path.exists(greenspace_file_plain):
         greenspace_gdf = gpd.read_file(greenspace_file)
         greenspace_gdf = greenspace_gdf.to_crs(epsg=32188)
-        greenspace_gdf['area_m2'] = greenspace_gdf.geometry.area
-        total_greenspace_m2 = greenspace_gdf['area_m2'].sum()
+        print(f"🔧 Processing greenspace polygons...")
+        print(f"   Original greenspace polygons: {len(greenspace_gdf)}")
+        census_union = census_gdf.geometry.unary_union
+        greenspace_gdf = greenspace_gdf[greenspace_gdf.geometry.intersects(census_union)].copy()
+        greenspace_gdf['geometry'] = greenspace_gdf.geometry.intersection(census_union)
+        greenspace_gdf = greenspace_gdf[~greenspace_gdf.geometry.is_empty]
+        print(f"   After clipping to census tracts: {len(greenspace_gdf)} polygons")
+        print(f"   Dissolving overlapping greenspace polygons...")
+        greenspace_union = greenspace_gdf.geometry.unary_union
+        if hasattr(greenspace_union, 'geoms'):
+            total_greenspace_m2 = sum(geom.area for geom in greenspace_union.geoms)
+        else:
+            total_greenspace_m2 = greenspace_union.area
         total_greenspace_km2 = total_greenspace_m2 / 1e6
         print(f"✓ Using clipped greenspace file: {os.path.basename(greenspace_file)}")
-        print(f"🌳 Total greenspace area: {total_greenspace_km2:.2f} km²")
+        print(f"🌳 Total greenspace area (dissolved, no overlaps): {total_greenspace_km2:.2f} km²")
     if len(valid_tracts) > 0 and total_population > 0:
         avg_greenspace_per_capita = total_greenspace_m2 / total_population
     else:
@@ -556,7 +627,8 @@ def process_city_pipeline(city_name, base_dir, census, census_boundaries, census
     otsu_ndvi_threshold(ndvi_tiff)
     mask_to_geojson(mask_tiff)
     clip_geojson_to_CD(geojson_mask, output_dir, census_div_shapefile, cduid=cduid)
-    combine_greenspace_with_census(clipped_geojson, city_dir)
+    combine_greenspace_with_census(clipped_geojson, city_dir, census_div_shapefile=census_div_shapefile, cduid=cduid)
+    write_frontend_clipped_greenspace(combined_geojson, base_dir, city_name, cduid)
     process_greenspace_census_data(combined_geojson, output_dir)
     process_greenspace_data(capita_geojson, output_dir)
     clip_final_geojson_files(census_div_shapefile, cduid, base_dir, city_name)
@@ -573,3 +645,15 @@ def process_city_pipeline(city_name, base_dir, census, census_boundaries, census
         traceback.print_exc()
         print(f"\n⚠️ Pipeline continuing despite smoothing failure...")
     print(f"Pipeline completed for city: {city_name}")
+if __name__ == "__main__":
+    generate_city_summary_stats(
+        city_name="victoria",
+        base_dir=r"B:\\greenspace_web\\py_data_process",
+        cduid="5917",
+    )
+    print("\n" + "="*60 + "\n")
+    generate_city_summary_stats(
+        city_name="calgary",
+        base_dir=r"B:\\greenspace_web\\py_data_process",
+        cduid="4806",
+    )

@@ -1,6 +1,6 @@
-# Welcome to your Rork app
+# Welcome to a Rork based app
 
-The base is a native cross-platform mobile app created with [Rork](https://rork.com)
+The base project is derived from a native cross-platform mobile app created with [Rork](https://rork.com)
 
 **Platform**: Native iOS & Android app, exportable to web
 **Framework**: Expo Router + React Native

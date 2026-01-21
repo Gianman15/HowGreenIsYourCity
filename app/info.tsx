@@ -3,31 +3,17 @@ import {
   StyleSheet,
   View,
   Text,
-  TouchableOpacity,
   ScrollView,
   Linking,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
-import { X, Leaf, MapPin, BarChart3, Database, Layers, RefreshCw } from 'lucide-react-native';
+import { Leaf, MapPin, BarChart3, Database, Layers, RefreshCw } from 'lucide-react-native';
 
 export default function InfoScreen() {
   const insets = useSafeAreaInsets();
-  const router = useRouter();
 
   return (
     <View style={styles.container}>
-      <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
-        <Text style={styles.headerTitle}>Information Guide</Text>
-        <TouchableOpacity 
-          style={styles.closeButton}
-          onPress={() => router.back()}
-          activeOpacity={0.7}
-        >
-          <X size={24} color="#1B5E20" />
-        </TouchableOpacity>
-      </View>
-
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 32 }]}

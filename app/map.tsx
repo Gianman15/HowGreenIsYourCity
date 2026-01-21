@@ -254,13 +254,6 @@ function LeafletMap({ city, activeLayers, onBreaksCalculated, colorblindMode = f
               fillOpacity: 0.15,
             },
             onEachFeature: (feature, layer) => {
-              const area = feature.properties.area;
-              layer.bindPopup(
-                `<strong>Greenspace</strong><br/>Area: ${
-                  area !== undefined ? area.toFixed(2) : 'N/A'
-                } km²`
-              );
-
               // Hover highlight
               layer.on('mouseover', function (e: any) {
                 try {

@@ -74,6 +74,16 @@ function RootLayoutNav() {
           headerLeft: () => <BackButton />,
         }}
       />
+      <Stack.Screen
+        name="info"
+        options={{
+          title: 'Information Guide',
+          headerTitleStyle: {
+            fontWeight: '700' as const,
+          },
+          headerLeft: () => <BackButton />,
+        }}
+      />
     </Stack>
   );
 }

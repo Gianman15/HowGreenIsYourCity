@@ -227,12 +227,7 @@ function LeafletMap({ city, activeLayers, sharedBreaks, colorblindMode = false, 
               fillOpacity: 0.15,
             },
             onEachFeature: (feature, layer) => {
-              const area = feature.properties.area;
-              layer.bindPopup(
-                `<strong>Greenspace</strong><br/>Area: ${
-                  area !== undefined ? area.toFixed(2) : 'N/A'
-                } km²`
-              );
+              // No popup on click for greenspace layer
             },
           });
 
@@ -462,6 +457,7 @@ function LeafletMap({ city, activeLayers, sharedBreaks, colorblindMode = false, 
           (layer as any)._colorblindModeRef = colorblindModeRef;
           (layer as any)._selectedBreakRangeRef = selectedBreakRangeRef;
           
+          // Calculate break range and notify parent on click
           layer.on('click', function () {
             // Calculate break range and notify parent
             if (onBreakRangeSelect && capita !== -1 && capita != null && !isNaN(capita)) {
